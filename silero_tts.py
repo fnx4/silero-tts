@@ -41,6 +41,7 @@ if __name__ == "__main__":
 
     source_file = open("text.txt", "r", encoding="utf-8") # TODO dynamic
     source_lines = source_file.read().splitlines()
+    size = str(len(source_lines))
     source_file.close()
 
     wrn = []
@@ -49,10 +50,10 @@ if __name__ == "__main__":
         text = re.sub("[^A-Za-z0-9А-Яа-яЁё_\s .,;!№$%&?+–-]+", "", text.strip())
         sentences = nltk.sent_tokenize(text) # TODO accent
         for sentence_num, sentence in enumerate(sentences):
-            file_name = out_folder + "tts_" + str(line_num).zfill(8) + "_" + str(sentence_num).zfill(3) + ".wav"
-            print(file_name + ": " + sentence)
+            file_name = out_folder + "tts_" + str(line_num).zfill(len(size)) + "_" + str(sentence_num).zfill(3) + ".wav"
+            print(file_name + " [" + str(line_num).zfill(len(size)) + "/" + size + "]: " + sentence)
             sentence = re.sub(r"(\d+)", lambda x: num2words.num2words(int(x.group(0)), lang="ru"), sentence)
-            print(sentence)
+            # print(sentence)
             if text.strip() != "" and not os.path.exists(file_name):
                 try:
                     audio_paths = model.save_wav(text=sentence, speaker=speaker, sample_rate=sample_rate, audio_path=file_name)
