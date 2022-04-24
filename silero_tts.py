@@ -66,6 +66,13 @@ if __name__ == "__main__":
                     sentence = transliterate.translit(sentence, language_code="ru")
                     audio_paths = model.save_wav(text=sentence, speaker=speaker, sample_rate=sample_rate, audio_path=file_name)
 
+    out_dir_file = open("out_files.txt", "w+", encoding="utf-8")
+    for path, dirs, files in os.walk(out_folder):
+        for file in files:
+            out_dir_file.write("file " + path + file + "\n")
+    out_dir_file.close()
+    # os.system("ffmpeg -f concat -safe 0 -i out_files.txt -c copy -y final_output.wav") # TODO aevalsrc, w/o external
+
     print("\nFinished!")
     print("Warnings: ")
     print(wrn)
