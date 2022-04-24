@@ -17,11 +17,11 @@ if __name__ == "__main__":
     # nltk.download("punkt") # if needed
 
     device = torch.device("cpu")
-    torch.set_num_threads(8)
+    torch.set_num_threads(16)
     sample_rate = 48000  # 8000, 24000, 48000
 
     local_file = "ru_v3.pt"
-    speaker = "xenia"  # "aidar", "baya", "kseniya", "xenia", "random"
+    speaker = "xenia"  # "aidar", "baya", "kseniya", "xenia"
     if not os.path.isfile(local_file):
         torch.hub.download_url_to_file("https://models.silero.ai/models/tts/ru/ru_v3.pt", local_file)
 
@@ -36,14 +36,17 @@ if __name__ == "__main__":
     # model_multi.to(device)
 
     out_folder = "result/" # TODO dynamic
-    wrn = []
+    if not os.path.exists(out_folder):
+        os.makedirs(out_folder)
 
-    source_file = open("text.txt", "r", encoding="utf-8")
+    source_file = open("text.txt", "r", encoding="utf-8") # TODO dynamic
     source_lines = source_file.read().splitlines()
+    source_file.close()
+
+    wrn = []
 
     for line_num, text in enumerate(source_lines):
         text = re.sub("[^A-Za-z0-9А-Яа-яЁё_\s .,;!№$%&?+–-]+", "", text.strip())
-
         sentences = nltk.sent_tokenize(text) # TODO accent
         for sentence_num, sentence in enumerate(sentences):
             file_name = out_folder + "tts_" + str(line_num).zfill(8) + "_" + str(sentence_num).zfill(3) + ".wav"
