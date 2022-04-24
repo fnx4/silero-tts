@@ -10,7 +10,7 @@ import num2words
 
 ###################################################
 # repo: https://github.com/snakers4/silero-models #
-# commit 941f911858f51c0cee6cad09d862c00bd8221204 #
+# commit f8a0190b29ca20c139b725e9ffb95a08633da0a0 #
 ###################################################
 
 if __name__ == "__main__":
@@ -56,7 +56,7 @@ if __name__ == "__main__":
             # print(sentence)
             if text.strip() != "" and not os.path.exists(file_name):
                 try:
-                    audio_paths = model.save_wav(text=sentence, speaker=speaker, sample_rate=sample_rate, audio_path=file_name)
+                    model.save_wav(text=sentence, speaker=speaker, sample_rate=sample_rate, audio_path=file_name)
                 except ValueError:
                     # audio_paths = model_multi.save_wav(text=sentence, speakers=multi_speakers, sample_rate=sample_rate) # TODO langs
                     print("ValueError EX!")
@@ -64,14 +64,15 @@ if __name__ == "__main__":
                     print(wrn_text)
                     wrn.append(wrn_text)
                     sentence = transliterate.translit(sentence, language_code="ru")
-                    audio_paths = model.save_wav(text=sentence, speaker=speaker, sample_rate=sample_rate, audio_path=file_name)
+                    model.save_wav(text=sentence, speaker=speaker, sample_rate=sample_rate, audio_path=file_name)
 
     out_dir_file = open("out_files.txt", "w+", encoding="utf-8")
     for path, dirs, files in os.walk(out_folder):
         for file in files:
             out_dir_file.write("file " + path + file + "\n")
+            # out_dir_file.write("file _silence_150.wav\n") # TMP: 150ms delay (wav/32bit/float) TODO SSML break
     out_dir_file.close()
-    # os.system("ffmpeg -f concat -safe 0 -i out_files.txt -c copy -y final_output.wav") # TODO aevalsrc, w/o external
+    # os.system("ffmpeg -f concat -safe 0 -i out_files.txt -c copy -y final_output.wav") # TODO w/o external
 
     print("\nFinished!")
     print("Warnings: ")
