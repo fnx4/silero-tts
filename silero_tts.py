@@ -64,6 +64,7 @@ if __name__ == "__main__":
     wrn = []
 
     for line_num, text in enumerate(source_lines):
+        text = str(text).replace("…", ",")
         text = re.sub("[^A-Za-z0-9А-Яа-яЁё_\s .,;!№$%&?+–-]+", "", text.strip())
         sentences = nltk.sent_tokenize(text) # TODO accent
         for sentence_num, sentence in enumerate(sentences):
@@ -72,16 +73,17 @@ if __name__ == "__main__":
             sentence = re.sub(r"(\d+)", lambda x: num2words.num2words(int(x.group(0)), lang="ru"), sentence)
             # print(sentence)
             if text.strip() != "" and not os.path.exists(file_name):
-                try:
-                    model.save_wav(text=sentence, speaker=speaker, sample_rate=sample_rate, audio_path=file_name)
-                except ValueError:
-                    # audio_paths = model_multi.save_wav(text=sentence, speakers=multi_speakers, sample_rate=sample_rate) # TODO langs
-                    print("ValueError EX!")
-                    wrn_text = str(line_num) + ": " + text + " -> " + sentence
-                    print(wrn_text)
-                    wrn.append(wrn_text)
-                    sentence = transliterate.translit(sentence, language_code="ru")
-                    model.save_wav(text=sentence, speaker=speaker, sample_rate=sample_rate, audio_path=file_name)
+                if (re.search('[A-Za-z0-9А-Яа-яЁё]', sentence)) is not None:
+                    try:
+                        model.save_wav(text=sentence, speaker=speaker, sample_rate=sample_rate, audio_path=file_name)
+                    except ValueError:
+                        # audio_paths = model_multi.save_wav(text=sentence, speakers=multi_speakers, sample_rate=sample_rate) # TODO langs
+                        print("ValueError EX!")
+                        wrn_text = str(line_num) + ": " + text + " -> " + sentence
+                        print(wrn_text)
+                        wrn.append(wrn_text)
+                        sentence = transliterate.translit(sentence, language_code="ru")
+                        model.save_wav(text=sentence, speaker=speaker, sample_rate=sample_rate, audio_path=file_name)
 
     out_dir_file = open(os.path.join(out_folder, "out_files.txt"), "w+", encoding="utf-8")
     for path, dirs, files in os.walk(out_folder):
@@ -89,11 +91,11 @@ if __name__ == "__main__":
             if str(file).lower().endswith(".wav"):
                 out_dir_file.write("file " + file + "\n")
                 # TMP: 150ms delay (wav/32bit/float) TODO SSML break:
-                # out_dir_file.write("file " + os.path.join(root, "_silence_150.wav").replace("\\", "/") + "\n")
+                out_dir_file.write("file " + os.path.join(root, "_silence_150.wav").replace("\\", "/") + "\n")
     out_dir_file.close()
     concat_cmd = "ffmpeg -f concat -safe 0 -i " + os.path.join(out_folder, "out_files.txt") + \
                  " -c copy -hide_banner -y " + os.path.join(out_folder, "final_output.wav")
-    # os.system(concat_cmd) # TODO w/o external ffmpeg
+    os.system(concat_cmd) # TODO w/o external ffmpeg
 
     print("\nWarnings: ")
     print(wrn)
