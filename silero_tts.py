@@ -12,7 +12,7 @@ import num2words
 
 ###################################################
 # repo: https://github.com/snakers4/silero-models #
-# commit f8a0190b29ca20c139b725e9ffb95a08633da0a0 #
+# commit 2b02d83227690120c92e268ce2378081a2717e21 #
 ###################################################
 
 wrn = []
@@ -33,8 +33,12 @@ def open_file(source, out_folder):
 def tts(lines, size, out_folder):
     for line_num, text in enumerate(lines):
         text = str(text).replace("…", ",")
-        text = re.sub("[^A-Za-z0-9А-Яа-яЁё_\s .,;!№$%&?+–—-]+", "", text.strip())
-        sentences = nltk.sent_tokenize(text) # TODO accent
+        text = str(text).replace("+", " плюс ")
+        text = re.sub("[^A-Za-z0-9А-Яа-яЁё_\s .,;!№$%&?–—-]+", "", text.strip())
+        t_sentences = nltk.sent_tokenize(text)
+        sentences = []
+        for sentence in t_sentences:
+            sentences += re.findall('.{1,850}', sentence)
         # print(sentences)
         for sentence_num, sentence in enumerate(sentences):
             file_name = out_folder + "/tts_" + str(line_num).zfill(len(size)) + "_" + str(sentence_num).zfill(3) + ".wav"
@@ -78,7 +82,7 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--output", action="store", help="relative output folder", default="result")
     parser.add_argument("-t", "--threads", action="store", help="thread count (torch.set_num_threads value)", default="4")
     parser.add_argument("-s", "--speaker", action="store", help="model speaker", default="xenia",
-                        choices=["aidar", "baya", "kseniya", "xenia"])
+                        choices=["aidar", "baya", "kseniya", "xenia", "eugeny"])
     parser.add_argument("-d", "--device", action="store", help="torch.device value", default="cpu",
                         choices=["cpu", "cuda", "xpu", "opengl", "opencl", "ideep", "vulkan", "hpu"])
     parser.add_argument("-r", "--rate", action="store", help="sample rate", default="48000")
@@ -93,10 +97,10 @@ if __name__ == "__main__":
     torch.set_num_threads(int(cfg["threads"]))
     sample_rate = int(cfg["rate"])
 
-    local_file = "ru_v3.pt"
+    local_file = "v3_1_ru.pt" # ru_v3.pt, v3_1_ru.pt
     speaker = cfg["speaker"]
     if not os.path.isfile(local_file):
-        torch.hub.download_url_to_file("https://models.silero.ai/models/tts/ru/ru_v3.pt", local_file)
+        torch.hub.download_url_to_file("https://models.silero.ai/models/tts/ru/" + local_file, local_file)
 
     # local_file_multi = "v2_multi.pt"
     # multi_speakers = ["baya", "kseniya", "irina", "ruslan", "natasha", "thorsten", "tux", "gilles", "lj", "dilyara"]
