@@ -118,7 +118,8 @@ if __name__ == "__main__":
     if os.path.isdir(source):
         for path, dirs, files in os.walk(source):
             for file_name in files:
-                out_file = str(file_name).replace(" ", "").replace(".txt", "")
+                out_file = str(file_name).replace(" ", "_").replace(".txt", "")
+                out_file = re.sub("[^A-Za-z0-9А-Яа-яЁё_!#%№-]+", "", out_file.strip())
                 out_folder = root_out_folder + "/" + out_file
                 open_file(os.path.join(path, file_name), out_folder)
                 try:
