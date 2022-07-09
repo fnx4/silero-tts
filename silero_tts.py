@@ -17,7 +17,7 @@ import num2words
 
 wrn = []
 parser = argparse.ArgumentParser(description="tts", formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-                                 epilog="Example: ./silero_tts.py -i chapter.txt -o relative/path/to/result -t 16 -s xenia -d cuda -r 48000")
+                                 epilog="Example: ./silero_tts.py -i chapter.txt -o relative/path/to/result -t 16 -s xenia -d cuda -r 48000 -H")
 
 
 def open_file(source, out_folder):
@@ -26,7 +26,8 @@ def open_file(source, out_folder):
     file = open(source, "r", encoding="utf-8")
     lines = file.read().splitlines()
     file.close()
-    size = str(len(lines))
+    size = str(len(lines) - 1)
+    print(out_folder)
     tts(lines, size, out_folder)
 
 
@@ -34,7 +35,8 @@ def tts(lines, size, out_folder):
     for line_num, text in enumerate(lines):
         text = str(text).replace("…", ",")
         text = str(text).replace("+", " плюс ")
-        text = re.sub("[^A-Za-z0-9А-Яа-яЁё_\s .,;!№$%&?–—-]+", "", text.strip())
+        text = str(text).replace("%", " процент ")
+        text = re.sub("[^A-Za-z0-9А-Яа-яЁё_\s .,;!№$&?–—-]+", "", text.strip())
         t_sentences = nltk.sent_tokenize(text)
         sentences = []
         for sentence in t_sentences:
@@ -42,7 +44,9 @@ def tts(lines, size, out_folder):
         # print(sentences)
         for sentence_num, sentence in enumerate(sentences):
             file_name = out_folder + "/tts_" + str(line_num).zfill(len(size)) + "_" + str(sentence_num).zfill(3) + ".wav"
-            print(file_name + " [" + str(line_num).zfill(len(size)) + "/" + size + "]: " + sentence)
+            log_text = file_name + " [" + str(line_num).zfill(len(size)) + "/" + size + "]"
+            log_text += (": " + sentence, "")[hide_log_text]
+            print(str(log_text).ljust(os.get_terminal_size().columns - 1), end='\r')
             sentence = re.sub(r"(\d+)", lambda x: num2words.num2words(int(x.group(0)), lang="ru"), sentence)
             # print(sentence)
             if text.strip() != "" and not os.path.exists(file_name):
@@ -53,6 +57,7 @@ def tts(lines, size, out_folder):
                         model.save_wav(text=sentence, speaker=speaker, sample_rate=sample_rate, audio_path=file_name)
                     except Exception as e:
                         if str(e) == "Model couldn't generate your text, probably it's too long":
+                            print()
                             print("Broken tokenization EX!")
                             wrn_text = out_folder + " (" + str(line_num) + ") " + text + " -> " + sentence
                             print(wrn_text)
@@ -60,6 +65,7 @@ def tts(lines, size, out_folder):
                             sentence = ''.join(filter(str.isalpha, sentence))
                             model.save_wav(text=sentence, speaker=speaker, sample_rate=sample_rate, audio_path=file_name)
                         else:
+                            print()
                             print(str(e))
                             exit(1)
 
@@ -73,8 +79,9 @@ def tts(lines, size, out_folder):
     out_dir_file.close()
     concat_cmd = "ffmpeg -f concat -safe 0 -i " + os.path.join(out_folder, "out_files.txt") + \
                  " -c:a mp3 -b:a 64k -hide_banner -y " + os.path.join(out_folder, "compressed_output.mp3")
+    print()
     os.system(concat_cmd) # TODO w/o external ffmpeg
-    print("\n\n")
+    print()
 
 
 if __name__ == "__main__":
@@ -86,16 +93,18 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--device", action="store", help="torch.device value", default="cpu",
                         choices=["cpu", "cuda", "xpu", "opengl", "opencl", "ideep", "vulkan", "hpu"])
     parser.add_argument("-r", "--rate", action="store", help="sample rate", default="48000")
+    parser.add_argument("-H", "--hide", action="store_true", help="do not print the text")
     args = parser.parse_args()
     cfg = vars(args)
     root = os.getcwd()
     print(cfg)
 
-    # nltk.download("punkt") # if needed
+    nltk.download("punkt") # if needed
 
     device = torch.device(cfg["device"])
     torch.set_num_threads(int(cfg["threads"]))
     sample_rate = int(cfg["rate"])
+    hide_log_text = cfg["hide"]
 
     local_file = "v3_1_ru.pt" # ru_v3.pt, v3_1_ru.pt
     speaker = cfg["speaker"]
