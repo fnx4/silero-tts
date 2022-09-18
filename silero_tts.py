@@ -8,16 +8,17 @@ import torch # cuda: 1.10.1+cu113
 import nltk
 import transliterate
 import num2words
+import pydub
 
 
 ###################################################
 # repo: https://github.com/snakers4/silero-models #
-# commit 2b02d83227690120c92e268ce2378081a2717e21 #
+# commit 20ce121e0deb7a1ce8fa007f27efdfff6e3dd816 #
 ###################################################
 
 wrn = []
 parser = argparse.ArgumentParser(description="tts", formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-                                 epilog="Example: ./silero_tts.py -i chapter.txt -o relative/path/to/result -t 16 -s xenia -d cuda -r 48000 -H")
+                                 epilog="Example: ./silero_tts.py -i folder/or/file.txt -o path/to/result -t 16 -s xenia -d cuda -r 48000 -H")
 
 
 def open_file(source, out_folder):
@@ -69,19 +70,16 @@ def tts(lines, size, out_folder):
                             print(str(e))
                             exit(1)
 
-    out_dir_file = open(os.path.join(out_folder, "out_files.txt"), "w+", encoding="utf-8")
+    print()
+    silence_wav = pydub.AudioSegment.silent(150)
     for path, dirs, files in os.walk(out_folder):
+        combined_wav = pydub.AudioSegment.silent(0)
         for file in files:
             if str(file).lower().endswith(".wav"):
-                out_dir_file.write("file " + file + "\n")
-                # TMP?: 150ms delay (wav/32bit/float)
-                out_dir_file.write("file " + os.path.join(root, "_silence_150.wav").replace("\\", "/") + "\n")
-    out_dir_file.close()
-    concat_cmd = "ffmpeg -f concat -safe 0 -i " + os.path.join(out_folder, "out_files.txt") + \
-                 " -c:a mp3 -b:a 64k -hide_banner -y " + os.path.join(out_folder, "compressed_output.mp3")
-    print()
-    os.system(concat_cmd) # TODO w/o external ffmpeg
-    print()
+                combined_wav = combined_wav + pydub.AudioSegment.from_wav(os.path.join(out_folder, file)) + silence_wav
+        combined_wav_file = os.path.join(out_folder, "compressed_output.mp3")
+        if not os.path.exists(combined_wav_file):
+            combined_wav.export(combined_wav_file, bitrate="64k", format="mp3")
 
 
 if __name__ == "__main__":
@@ -89,7 +87,7 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--output", action="store", help="relative output folder", default="result")
     parser.add_argument("-t", "--threads", action="store", help="thread count (torch.set_num_threads value)", default="4")
     parser.add_argument("-s", "--speaker", action="store", help="model speaker", default="xenia",
-                        choices=["aidar", "baya", "kseniya", "xenia", "eugeny"])
+                        choices=["aidar", "baya", "kseniya", "xenia", "eugene"])
     parser.add_argument("-d", "--device", action="store", help="torch.device value", default="cpu",
                         choices=["cpu", "cuda", "xpu", "opengl", "opencl", "ideep", "vulkan", "hpu"])
     parser.add_argument("-r", "--rate", action="store", help="sample rate", default="48000")
@@ -111,15 +109,8 @@ if __name__ == "__main__":
     if not os.path.isfile(local_file):
         torch.hub.download_url_to_file("https://models.silero.ai/models/tts/ru/" + local_file, local_file)
 
-    # local_file_multi = "v2_multi.pt"
-    # multi_speakers = ["baya", "kseniya", "irina", "ruslan", "natasha", "thorsten", "tux", "gilles", "lj", "dilyara"]
-    # if not os.path.isfile(local_file_multi):
-    #     torch.hub.download_url_to_file("https://models.silero.ai/models/tts/multi/v2_multi.pt", local_file_multi)
-
     model = torch.package.PackageImporter(local_file).load_pickle("tts_models", "model")
     model.to(device)
-    # model_multi = torch.package.PackageImporter(local_file).load_pickle("tts_models", "model")
-    # model_multi.to(device)
 
     root_out_folder = cfg["output"]
     source = cfg["input"]
@@ -129,7 +120,7 @@ if __name__ == "__main__":
             for file_name in files:
                 out_file = str(file_name).replace(" ", "_").replace(".txt", "")
                 out_file = re.sub("[^A-Za-z0-9А-Яа-яЁё_!#%№-]+", "", out_file.strip())
-                out_folder = root_out_folder + "/" + out_file
+                out_folder = os.path.join(root_out_folder, out_file)
                 open_file(os.path.join(path, file_name), out_folder)
                 try:
                     os.replace(os.path.join(out_folder, "compressed_output.mp3"), os.path.join(root_out_folder, out_file + ".mp3"))
