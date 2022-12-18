@@ -4,7 +4,7 @@ import os
 import re
 import argparse
 
-import torch # cuda: 1.10.1+cu113
+import torch # cuda: 1.13.1+cu117
 import nltk
 import transliterate
 import num2words
@@ -77,9 +77,9 @@ def tts(lines, size, out_folder):
         for file in files:
             if str(file).lower().endswith(".wav"):
                 combined_wav = combined_wav + pydub.AudioSegment.from_wav(os.path.join(out_folder, file)) + silence_wav
-        combined_wav_file = os.path.join(out_folder, "compressed_output.mp3")
+        combined_wav_file = os.path.join(out_folder, "compressed_output.opus")
         if not os.path.exists(combined_wav_file):
-            combined_wav.export(combined_wav_file, bitrate="64k", format="mp3")
+            combined_wav.export(combined_wav_file, bitrate="32k", format="opus", codec="libopus")
 
 
 if __name__ == "__main__":
@@ -123,7 +123,7 @@ if __name__ == "__main__":
                 out_folder = os.path.join(root_out_folder, out_file)
                 open_file(os.path.join(path, file_name), out_folder)
                 try:
-                    os.replace(os.path.join(out_folder, "compressed_output.mp3"), os.path.join(root_out_folder, out_file + ".mp3"))
+                    os.replace(os.path.join(out_folder, "compressed_output.opus"), os.path.join(root_out_folder, out_file + ".opus"))
                 except FileNotFoundError:
                     print(out_folder + ": file not merged or already moved")
 
