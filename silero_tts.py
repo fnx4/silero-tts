@@ -74,7 +74,7 @@ def tts(lines, size, out_folder):
     silence_wav = pydub.AudioSegment.silent(150)
     for path, dirs, files in os.walk(out_folder):
         combined_wav = pydub.AudioSegment.silent(0)
-        for file in files:
+        for file in sorted(files):
             if str(file).lower().endswith(".wav"):
                 combined_wav = combined_wav + pydub.AudioSegment.from_wav(os.path.join(out_folder, file)) + silence_wav
         combined_wav_file = os.path.join(out_folder, "compressed_output.opus")
@@ -117,7 +117,7 @@ if __name__ == "__main__":
 
     if os.path.isdir(source):
         for path, dirs, files in os.walk(source):
-            for file_name in files:
+            for file_name in sorted(files):
                 out_file = str(file_name).replace(" ", "_").replace(".txt", "")
                 out_file = re.sub("[^A-Za-z0-9А-Яа-яЁё_!#%№-]+", "", out_file.strip())
                 out_folder = os.path.join(root_out_folder, out_file)
