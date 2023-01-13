@@ -13,7 +13,7 @@ import pydub
 
 ###################################################
 # repo: https://github.com/snakers4/silero-models #
-# commit 20ce121e0deb7a1ce8fa007f27efdfff6e3dd816 #
+# commit a7e61e1c6d69e981d2b8da39194ed7512ad4c3c2 #
 ###################################################
 
 wrn = []
@@ -101,6 +101,7 @@ if __name__ == "__main__":
 
     device = torch.device(cfg["device"])
     torch.set_num_threads(int(cfg["threads"]))
+    torch._C._jit_set_profiling_mode(False)
     sample_rate = int(cfg["rate"])
     hide_log_text = cfg["hide"]
 
