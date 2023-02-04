@@ -9,6 +9,7 @@ import nltk
 import transliterate
 import num2words
 import pydub
+import tqdm
 
 
 ###################################################
@@ -18,7 +19,7 @@ import pydub
 
 wrn = []
 parser = argparse.ArgumentParser(description="tts", formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-                                 epilog="Example: ./silero_tts.py -i folder/or/file.txt -o path/to/result -t 16 -s xenia -d cuda -r 48000 -H")
+                                 epilog="Example: ./silero_tts.py -i folder/or/file.txt -o path/to/result -t 16 -s xenia -d cuda -r 48000 --merge")
 
 
 def open_file(source, out_folder):
@@ -28,12 +29,13 @@ def open_file(source, out_folder):
     lines = file.read().splitlines()
     file.close()
     size = str(len(lines) - 1)
+    print()
     print(out_folder)
     tts(lines, size, out_folder)
 
 
 def tts(lines, size, out_folder):
-    for line_num, text in enumerate(lines):
+    for line_num, text in enumerate(tqdm.tqdm(lines, desc="    TTS")):
         text = str(text).replace("…", ",")
         text = str(text).replace("+", " плюс ")
         text = str(text).replace("%", " процент ")
@@ -45,9 +47,6 @@ def tts(lines, size, out_folder):
         # print(sentences)
         for sentence_num, sentence in enumerate(sentences):
             file_name = out_folder + "/tts_" + str(line_num).zfill(len(size)) + "_" + str(sentence_num).zfill(3) + ".wav"
-            log_text = file_name + " [" + str(line_num).zfill(len(size)) + "/" + size + "]"
-            log_text += (": " + sentence, "")[hide_log_text]
-            print(str(log_text).ljust(os.get_terminal_size().columns - 1), end='\r')
             sentence = re.sub(r"(\d+)", lambda x: num2words.num2words(int(x.group(0)), lang="ru"), sentence)
             # print(sentence)
             if text.strip() != "" and not os.path.exists(file_name):
@@ -58,7 +57,6 @@ def tts(lines, size, out_folder):
                         model.save_wav(text=sentence, speaker=speaker, sample_rate=sample_rate, audio_path=file_name)
                     except Exception as e:
                         if str(e) == "Model couldn't generate your text, probably it's too long":
-                            print()
                             print("Broken tokenization EX!")
                             wrn_text = out_folder + " (" + str(line_num) + ") " + text + " -> " + sentence
                             print(wrn_text)
@@ -66,20 +64,26 @@ def tts(lines, size, out_folder):
                             sentence = ''.join(filter(str.isalpha, sentence))
                             model.save_wav(text=sentence, speaker=speaker, sample_rate=sample_rate, audio_path=file_name)
                         else:
-                            print()
                             print(str(e))
                             exit(1)
 
-    print()
-    silence_wav = pydub.AudioSegment.silent(150)
-    for path, dirs, files in os.walk(out_folder):
-        combined_wav = pydub.AudioSegment.silent(0)
-        for file in sorted(files):
-            if str(file).lower().endswith(".wav"):
-                combined_wav = combined_wav + pydub.AudioSegment.from_wav(os.path.join(out_folder, file)) + silence_wav
-        combined_wav_file = os.path.join(out_folder, "compressed_output.opus")
-        if not os.path.exists(combined_wav_file):
-            combined_wav.export(combined_wav_file, bitrate="32k", format="opus", codec="libopus")
+    if merge:
+        silence_wav = pydub.AudioSegment.silent(150)
+        count = sum(len(files) for _d, _d, files in os.walk(out_folder))
+        if count > 1000:
+            print("!!  WARNING: Too many files, merging may be slow !!")
+        for path, dirs, files in os.walk(out_folder):
+            combined_wav = pydub.AudioSegment.silent(0)
+            with tqdm.tqdm(total=count, desc="MERGING") as it:
+                for file in sorted(files):
+                    if str(file).lower().endswith(".wav"):
+                        combined_wav = combined_wav + pydub.AudioSegment.from_wav(os.path.join(out_folder, file)) + silence_wav
+                        it.update(1)
+            combined_wav_file = os.path.join(out_folder, "compressed_output.opus")
+            if not os.path.exists(combined_wav_file):
+                print("Encoding...")
+                combined_wav.export(combined_wav_file, bitrate="32k", format="opus", codec="libopus")
+            print()
 
 
 if __name__ == "__main__":
@@ -91,7 +95,7 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--device", action="store", help="torch.device value", default="cpu",
                         choices=["cpu", "cuda", "xpu", "opengl", "opencl", "ideep", "vulkan", "hpu"])
     parser.add_argument("-r", "--rate", action="store", help="sample rate", default="48000")
-    parser.add_argument("-H", "--hide", action="store_true", help="do not print the text")
+    parser.add_argument("-m", "--merge", action="store_true", help="merge wav files and save as opus")
     args = parser.parse_args()
     cfg = vars(args)
     root = os.getcwd()
@@ -99,11 +103,12 @@ if __name__ == "__main__":
 
     nltk.download("punkt") # if needed
 
+    torch._C._jit_set_profiling_mode(False)
+
     device = torch.device(cfg["device"])
     torch.set_num_threads(int(cfg["threads"]))
-    torch._C._jit_set_profiling_mode(False)
     sample_rate = int(cfg["rate"])
-    hide_log_text = cfg["hide"]
+    merge = cfg["merge"]
 
     local_file = "v3_1_ru.pt" # ru_v3.pt, v3_1_ru.pt
     speaker = cfg["speaker"]
@@ -123,10 +128,11 @@ if __name__ == "__main__":
                 out_file = re.sub("[^A-Za-z0-9А-Яа-яЁё_!#%№-]+", "", out_file.strip())
                 out_folder = os.path.join(root_out_folder, out_file)
                 open_file(os.path.join(path, file_name), out_folder)
-                try:
-                    os.replace(os.path.join(out_folder, "compressed_output.opus"), os.path.join(root_out_folder, out_file + ".opus"))
-                except FileNotFoundError:
-                    print(out_folder + ": file not merged or already moved")
+                if merge:
+                    try:
+                        os.replace(os.path.join(out_folder, "compressed_output.opus"), os.path.join(root_out_folder, out_file + ".opus"))
+                    except FileNotFoundError:
+                        print(out_folder + ": file not merged or already moved")
 
     elif os.path.isfile(source):
         print(source)
