@@ -10,6 +10,7 @@ import transliterate
 import num2words
 import pydub
 import tqdm
+import pypandoc
 
 
 ###################################################
@@ -34,6 +35,48 @@ def open_file(source, out_folder):
     tts(lines, size, out_folder)
 
 
+def open_fb2(source):
+    print("converting file " + source + "...")
+    md = pypandoc.convert_file(source, "md")
+
+    print("extracting chapters...")
+    chapters = []
+    chapter_text = source
+    for line in md.splitlines():
+        if line == "::: section":
+            chapters.append(chapter_text)
+            chapter_text = ""
+        else:
+            # chapter_text += pypandoc.convert_text(line, "plain", format="md") # too slow
+            chapter_text += line + "\n"
+            if line == "":
+                chapter_text += "\r\n"
+    chapters.append(chapter_text)
+
+    print()
+    e_size = str(len(chapters) - 1)
+    for line_num, chapter in enumerate(chapters):
+        chapter_name = str(chapter).partition("\n")[0]
+        chapter_name = pypandoc.convert_text(chapter_name, "plain", format="md")
+        chapter_name = chapter_name.replace(" ", "_").replace("\r", "").replace("\n", "")
+        chapter_name = re.sub("[^A-Za-z0-9А-Яа-яЁё_!#%№-]+", "", chapter_name.strip())
+
+        out_file = (str(line_num).zfill(len(e_size)) + "_" + chapter_name).replace(".fb2", "")
+        out_folder = os.path.join(root_out_folder, out_file).replace(" ",  "_")
+
+        chapter = str(chapter).replace("\n", " ")
+        chapter = re.sub("[^A-Za-z0-9А-Яа-яЁё_\s .,;!№$&?–—-]+", "", chapter.strip())
+
+        if not os.path.exists(out_folder):
+            os.makedirs(out_folder)
+        tts(chapter.splitlines(), e_size, out_folder)
+        if merge:
+            try:
+                os.replace(os.path.join(out_folder, "compressed_output.opus"), os.path.join(root_out_folder, out_file + ".opus"))
+            except FileNotFoundError:
+                print(out_folder + ": file not merged or already moved")
+
+
 def tts(lines, size, out_folder):
     for line_num, text in enumerate(tqdm.tqdm(lines, desc="    TTS")):
         text = str(text).replace("…", ",")
@@ -46,7 +89,7 @@ def tts(lines, size, out_folder):
             sentences += re.findall('.{1,850}', sentence)
         # print(sentences)
         for sentence_num, sentence in enumerate(sentences):
-            file_name = out_folder + "/tts_" + str(line_num).zfill(len(size)) + "_" + str(sentence_num).zfill(3) + ".wav"
+            file_name = os.path.join(out_folder,  "tts_" + str(line_num).zfill(len(size)) + "_" + str(sentence_num).zfill(3) + ".wav")
             sentence = re.sub(r"(\d+)", lambda x: num2words.num2words(int(x.group(0)), lang="ru"), sentence)
             # print(sentence)
             if text.strip() != "" and not os.path.exists(file_name):
@@ -135,9 +178,12 @@ if __name__ == "__main__":
                         print(out_folder + ": file not merged or already moved")
 
     elif os.path.isfile(source):
-        print(source)
-        print(root_out_folder)
-        open_file(source, root_out_folder)
+        if str(source).lower().endswith(".fb2"):
+            open_fb2(source)
+        else:
+            print(source)
+            print(root_out_folder)
+            open_file(source, root_out_folder)
 
     else:
         print("Error: input file or folder not found")
