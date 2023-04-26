@@ -3,6 +3,7 @@
 import os
 import re
 import argparse
+import concurrent
 
 import torch # cuda: 1.13.1+cu117
 import nltk
@@ -35,6 +36,30 @@ def open_file(source, out_folder):
     tts(lines, size, out_folder)
 
 
+def enc_merge(merge_object):
+    silence_wav = pydub.AudioSegment.silent(150)
+    for path, dirs, files in os.walk(merge_object["out_folder"]):
+        combined_wav = pydub.AudioSegment.silent(0)
+        for file in sorted(files):
+            if str(file).lower().endswith(".wav"):
+                combined_wav = combined_wav + pydub.AudioSegment.from_wav(os.path.join(merge_object["out_folder"], file)) + silence_wav
+        combined_wav_file = os.path.join(merge_object["out_folder"], "compressed_output.opus")
+        #if not os.path.exists(combined_wav_file):
+        combined_wav.export(combined_wav_file, bitrate="32k", format="opus", codec="libopus")
+        os.replace(os.path.join(merge_object["out_folder"], "compressed_output.opus"),
+                   os.path.join(root_out_folder, merge_object["out_file"] + ".opus"))
+
+
+def enc_merge_exec(merge_objects):
+    print()
+    print("Merging and encoding, please wait... (" + cfg["threads"] + " threads)")
+    pbar = tqdm.tqdm(total=len(merge_objects), desc="MERGING", unit="chapter")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=int(cfg["threads"])) as executor:
+        futures = [executor.submit(enc_merge, merge_object) for merge_object in merge_objects]
+        for future in concurrent.futures.as_completed(futures):
+            pbar.update(1)
+
+
 def open_fb2(source):
     print("converting file " + source + "...")
     md = pypandoc.convert_file(source, "md")
@@ -55,6 +80,7 @@ def open_fb2(source):
 
     print()
     e_size = str(len(chapters) - 1)
+    merge_objects = []
     for line_num, chapter in enumerate(chapters):
         chapter_name = str(chapter).partition("\n")[0]
         chapter_name = pypandoc.convert_text(chapter_name, "plain", format="md")
@@ -63,18 +89,22 @@ def open_fb2(source):
 
         out_file = (str(line_num).zfill(len(e_size)) + "_" + chapter_name).replace(".fb2", "")
         out_folder = os.path.join(root_out_folder, out_file).replace(" ",  "_")
+        merge_object = {
+            "out_file": out_file,
+            "out_folder": out_folder,
+        }
+        merge_objects.append(merge_object)
 
         chapter = str(chapter).replace("\n", " ")
         chapter = re.sub("[^A-Za-z0-9А-Яа-яЁё_\s .,;!№$&?–—-]+", "", chapter.strip())
 
         if not os.path.exists(out_folder):
             os.makedirs(out_folder)
+        print()
+        print(out_folder)
         tts(chapter.splitlines(), e_size, out_folder)
-        if merge:
-            try:
-                os.replace(os.path.join(out_folder, "compressed_output.opus"), os.path.join(root_out_folder, out_file + ".opus"))
-            except FileNotFoundError:
-                print(out_folder + ": file not merged or already moved")
+    if merge:
+        enc_merge_exec(merge_objects)
 
 
 def tts(lines, size, out_folder):
@@ -110,29 +140,13 @@ def tts(lines, size, out_folder):
                             print(str(e))
                             exit(1)
 
-    if merge:
-        silence_wav = pydub.AudioSegment.silent(150)
-        count = sum(len(files) for _d, _d, files in os.walk(out_folder))
-        if count > 1000:
-            print("!!  WARNING: Too many files, merging may be slow !!")
-        for path, dirs, files in os.walk(out_folder):
-            combined_wav = pydub.AudioSegment.silent(0)
-            with tqdm.tqdm(total=count, desc="MERGING") as it:
-                for file in sorted(files):
-                    if str(file).lower().endswith(".wav"):
-                        combined_wav = combined_wav + pydub.AudioSegment.from_wav(os.path.join(out_folder, file)) + silence_wav
-                        it.update(1)
-            combined_wav_file = os.path.join(out_folder, "compressed_output.opus")
-            if not os.path.exists(combined_wav_file):
-                print("Encoding...")
-                combined_wav.export(combined_wav_file, bitrate="32k", format="opus", codec="libopus")
-            print()
-
 
 if __name__ == "__main__":
-    parser.add_argument("-i", "--input", action="store", help="input file or folder (all txt files or chapters)", required=True)
+    parser.add_argument("-i", "--input", action="store", help="input file or folder (all txt files or chapters)",
+                        required=True)
     parser.add_argument("-o", "--output", action="store", help="relative output folder", default="result")
-    parser.add_argument("-t", "--threads", action="store", help="thread count (torch.set_num_threads value)", default="4")
+    parser.add_argument("-t", "--threads", action="store", help="thread count (torch.set_num_threads value)",
+                        default="4")
     parser.add_argument("-s", "--speaker", action="store", help="model speaker", default="xenia",
                         choices=["aidar", "baya", "kseniya", "xenia", "eugene"])
     parser.add_argument("-d", "--device", action="store", help="torch.device value", default="cpu",
@@ -165,17 +179,20 @@ if __name__ == "__main__":
     source = cfg["input"]
 
     if os.path.isdir(source):
+        merge_objects = []
         for path, dirs, files in os.walk(source):
             for file_name in sorted(files):
                 out_file = str(file_name).replace(" ", "_").replace(".txt", "")
                 out_file = re.sub("[^A-Za-z0-9А-Яа-яЁё_!#%№-]+", "", out_file.strip())
                 out_folder = os.path.join(root_out_folder, out_file)
                 open_file(os.path.join(path, file_name), out_folder)
-                if merge:
-                    try:
-                        os.replace(os.path.join(out_folder, "compressed_output.opus"), os.path.join(root_out_folder, out_file + ".opus"))
-                    except FileNotFoundError:
-                        print(out_folder + ": file not merged or already moved")
+                merge_object = {
+                    "out_file": out_file,
+                    "out_folder": out_folder,
+                }
+                merge_objects.append(merge_object)
+        if merge:
+            enc_merge_exec(merge_objects)
 
     elif os.path.isfile(source):
         if str(source).lower().endswith(".fb2"):
@@ -184,6 +201,13 @@ if __name__ == "__main__":
             print(source)
             print(root_out_folder)
             open_file(source, root_out_folder)
+            if merge:
+                merge_object = {
+                    "out_file": "compressed_output.opus",
+                    "out_folder": root_out_folder,
+                }
+                print("Merging and encoding, please wait...")
+                enc_merge(merge_object)
 
     else:
         print("Error: input file or folder not found")
