@@ -142,11 +142,9 @@ def tts(lines, size, out_folder):
 
 
 if __name__ == "__main__":
-    parser.add_argument("-i", "--input", action="store", help="input file or folder (all txt files or chapters)",
-                        required=True)
+    parser.add_argument("-i", "--input", action="store", help="input file or folder (all txt files or chapters)", required=True)
     parser.add_argument("-o", "--output", action="store", help="relative output folder", default="result")
-    parser.add_argument("-t", "--threads", action="store", help="thread count (torch.set_num_threads value)",
-                        default="4")
+    parser.add_argument("-t", "--threads", action="store", help="thread count (torch.set_num_threads value)", default="4")
     parser.add_argument("-s", "--speaker", action="store", help="model speaker", default="xenia",
                         choices=["aidar", "baya", "kseniya", "xenia", "eugene"])
     parser.add_argument("-d", "--device", action="store", help="torch.device value", default="cpu",
