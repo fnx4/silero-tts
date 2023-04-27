@@ -30,10 +30,9 @@ def open_file(source, out_folder):
     file = open(source, "r", encoding="utf-8")
     lines = file.read().splitlines()
     file.close()
-    size = str(len(lines) - 1)
     print()
     print(out_folder)
-    tts(lines, size, out_folder)
+    tts(lines, out_folder)
 
 
 def enc_merge(merge_object):
@@ -79,7 +78,6 @@ def open_fb2(source):
     chapters.append(chapter_text)
 
     print()
-    e_size = str(len(chapters) - 1)
     merge_objects = []
     for line_num, chapter in enumerate(chapters):
         chapter_name = str(chapter).partition("\n")[0]
@@ -87,7 +85,7 @@ def open_fb2(source):
         chapter_name = chapter_name.replace(" ", "_").replace("\r", "").replace("\n", "")
         chapter_name = re.sub("[^A-Za-z0-9А-Яа-яЁё_!#%№-]+", "", chapter_name.strip())
 
-        out_file = (str(line_num).zfill(len(e_size)) + "_" + chapter_name).replace(".fb2", "")
+        out_file = (str(line_num).zfill(6) + "_" + chapter_name).replace(".fb2", "")
         out_folder = os.path.join(root_out_folder, out_file).replace(" ",  "_")
         merge_object = {
             "out_file": out_file,
@@ -102,12 +100,12 @@ def open_fb2(source):
             os.makedirs(out_folder)
         print()
         print(out_folder)
-        tts(chapter.splitlines(), e_size, out_folder)
+        tts(chapter.splitlines(), out_folder)
     if merge:
         enc_merge_exec(merge_objects)
 
 
-def tts(lines, size, out_folder):
+def tts(lines, out_folder):
     for line_num, text in enumerate(tqdm.tqdm(lines, desc="    TTS")):
         text = str(text).replace("…", ",")
         text = str(text).replace("+", " плюс ")
@@ -119,7 +117,7 @@ def tts(lines, size, out_folder):
             sentences += re.findall('.{1,850}', sentence)
         # print(sentences)
         for sentence_num, sentence in enumerate(sentences):
-            file_name = os.path.join(out_folder,  "tts_" + str(line_num).zfill(len(size)) + "_" + str(sentence_num).zfill(3) + ".wav")
+            file_name = os.path.join(out_folder,  "tts_" + str(line_num).zfill(6) + "_" + str(sentence_num).zfill(3) + ".wav")
             sentence = re.sub(r"(\d+)", lambda x: num2words.num2words(int(x.group(0)), lang="ru"), sentence)
             # print(sentence)
             if text.strip() != "" and not os.path.exists(file_name):
