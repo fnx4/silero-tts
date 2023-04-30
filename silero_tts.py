@@ -4,6 +4,8 @@ import os
 import re
 import argparse
 import concurrent
+import subprocess
+import uuid
 
 import torch # cuda: 1.13.1+cu117
 import nltk
@@ -35,6 +37,42 @@ def open_file(source, out_folder):
     tts(lines, out_folder)
 
 
+def experimental_svc(input_wav_blob): # UNSTABLE
+
+    svcg_path = "B:\\apps\\tts\\_other\\so-vits-svc-fork\\venv\\Scripts\\svc.exe"
+    model_name = "ru-saya" # https://huggingface.co/fnx/so-vits-svc-4.0-ru-saya/tree/main
+    checkpoint_name = "G_1500.pth"
+
+    svc_path = os.path.join(os.path.abspath(os.getcwd()), "_svc")
+    in_path  = os.path.join(svc_path, "tmp", "in")
+    out_path = os.path.join(svc_path, "tmp", "out")
+
+    os.makedirs(in_path,  exist_ok=True)
+    os.makedirs(out_path, exist_ok=True)
+
+    file_name = str(uuid.uuid4()) + ".wav"
+    in_file_path = os.path.join(in_path, file_name)
+    input_wav_blob.export(in_file_path, format="wav")
+
+    svcg_params = " infer " \
+                  "-o " + os.path.join(out_path, file_name) + " " \
+                  "-s " + model_name + " " \
+                  "-m " + os.path.join(svc_path, "models", model_name, checkpoint_name) + " " \
+                  "-c " + os.path.join(svc_path, "models", model_name, "config.json") + " " \
+                  "-t 2 " \
+                  "-db -25 " \
+                  "--no-auto-predict-f0 " \
+                  "-d cuda " \
+                  "" + os.path.join(in_path,  file_name)
+
+    subprocess.run(svcg_path + svcg_params, stdout=subprocess.PIPE, shell=True)
+
+    audio = pydub.AudioSegment.from_wav(os.path.join(out_path, file_name))
+    os.remove(os.path.join(in_path,  file_name))
+    os.remove(os.path.join(out_path, file_name))
+    return audio
+
+
 def enc_merge(merge_object):
     silence_wav = pydub.AudioSegment.silent(150)
     for path, dirs, files in os.walk(merge_object["out_folder"]):
@@ -42,11 +80,11 @@ def enc_merge(merge_object):
         for file in sorted(files):
             if str(file).lower().endswith(".wav"):
                 combined_wav = combined_wav + pydub.AudioSegment.from_wav(os.path.join(merge_object["out_folder"], file)) + silence_wav
+        #combined_wav = experimental_svc(combined_wav) # Testing
         combined_wav_file = os.path.join(merge_object["out_folder"], "compressed_output.opus")
         #if not os.path.exists(combined_wav_file):
         combined_wav.export(combined_wav_file, bitrate="32k", format="opus", codec="libopus")
-        os.replace(os.path.join(merge_object["out_folder"], "compressed_output.opus"),
-                   os.path.join(root_out_folder, merge_object["out_file"] + ".opus"))
+        os.replace(os.path.join(merge_object["out_folder"], "compressed_output.opus"), os.path.join(root_out_folder, merge_object["out_file"] + ".opus"))
 
 
 def enc_merge_exec(merge_objects):
