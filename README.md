@@ -5,14 +5,14 @@
 
 ```
 usage: silero_tts.py [-h] -i INPUT [-o OUTPUT] [-t THREADS] [-s {aidar,baya,kseniya,xenia,eugene}]
-                     [-d {cpu,cuda,xpu,opengl,opencl,ideep,vulkan,hpu}] [-r RATE] [-m]
+                     [-d {cpu,cuda,xpu,opengl,opencl,ideep,vulkan,hpu}] [-r RATE] [-m] [-c]
 
 tts
 
 optional arguments:
   -h, --help            show this help message and exit
   -i INPUT, --input INPUT
-                        input file or folder (all txt files or chapters) (default: None)
+                        input fb2 file or txt file(s) or folder with txt files (chapters) (default: None)
   -o OUTPUT, --output OUTPUT
                         relative output folder (default: result)
   -t THREADS, --threads THREADS
@@ -23,6 +23,7 @@ optional arguments:
                         torch.device value (default: cpu)
   -r RATE, --rate RATE  sample rate (default: 48000)
   -m, --merge           merge wav files and save as opus (default: False)
+  -c, --svc             experimental, use voice conversion (so-vits-svc) (default: False)
 
 Example: ./silero_tts.py -i folder/or/file.txt -o path/to/result -t 16 -s xenia -d cuda -r 48000 --merge
 ```

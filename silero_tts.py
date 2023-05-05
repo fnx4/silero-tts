@@ -39,13 +39,16 @@ def open_file(source, out_folder):
 
 def experimental_svc(input_wav_blob): # UNSTABLE
 
-    svcg_path = "B:\\apps\\tts\\_other\\so-vits-svc-fork\\venv\\Scripts\\svc.exe"
-    model_name = "ru-saya" # https://huggingface.co/fnx/so-vits-svc-4.0-ru-saya/tree/main
-    checkpoint_name = "G_1500.pth"
-
-    svc_path = os.path.join(os.path.abspath(os.getcwd()), "_svc")
-    in_path  = os.path.join(svc_path, "tmp", "in")
+    svc_path = os.path.join(os.path.abspath(os.getcwd()), "so-vits-svc-fork")
+    svcg_path = os.path.join(svc_path, "venv", "scripts", "")
+    in_path = os.path.join(svc_path, "tmp", "in")
     out_path = os.path.join(svc_path, "tmp", "out")
+
+    model_name = "ru-saya" # https://huggingface.co/fnx/so-vits-svc-4.0-ru-saya/tree/main
+    checkpoint_name = "G_10000.pth"
+
+    threshold = "-25" if speaker == "xenia" else "-20"
+    svc_device = "cuda" if device == "cuda" else "cpu"
 
     os.makedirs(in_path,  exist_ok=True)
     os.makedirs(out_path, exist_ok=True)
@@ -59,13 +62,13 @@ def experimental_svc(input_wav_blob): # UNSTABLE
                   "-s " + model_name + " " \
                   "-m " + os.path.join(svc_path, "models", model_name, checkpoint_name) + " " \
                   "-c " + os.path.join(svc_path, "models", model_name, "config.json") + " " \
-                  "-t 2 " \
-                  "-db -25 " \
+                  "-t 3 " \
+                  "-db " + threshold + " " \
                   "--no-auto-predict-f0 " \
-                  "-d cuda " \
-                  "" + os.path.join(in_path,  file_name)
+                  "-d " + svc_device + " " \
+                  "" + os.path.join(in_path, file_name)
 
-    subprocess.run(svcg_path + svcg_params, stdout=subprocess.PIPE, shell=True)
+    subprocess.run(svcg_path + "svc " + svcg_params, stdout=subprocess.PIPE, shell=True)
 
     audio = pydub.AudioSegment.from_wav(os.path.join(out_path, file_name))
     os.remove(os.path.join(in_path,  file_name))
@@ -80,7 +83,8 @@ def enc_merge(merge_object):
         for file in sorted(files):
             if str(file).lower().endswith(".wav"):
                 combined_wav = combined_wav + pydub.AudioSegment.from_wav(os.path.join(merge_object["out_folder"], file)) + silence_wav
-        #combined_wav = experimental_svc(combined_wav) # Testing
+        if use_svc:
+            combined_wav = experimental_svc(combined_wav)
         combined_wav_file = os.path.join(merge_object["out_folder"], "compressed_output.opus")
         #if not os.path.exists(combined_wav_file):
         combined_wav.export(combined_wav_file, bitrate="32k", format="opus", codec="libopus")
@@ -178,7 +182,7 @@ def tts(lines, out_folder):
 
 
 if __name__ == "__main__":
-    parser.add_argument("-i", "--input", action="store", help="input file or folder (all txt files or chapters)", required=True)
+    parser.add_argument("-i", "--input", action="store", help="input fb2 file or txt file(s) or folder with txt files (chapters)", required=True)
     parser.add_argument("-o", "--output", action="store", help="relative output folder", default="result")
     parser.add_argument("-t", "--threads", action="store", help="thread count (torch.set_num_threads value)", default="4")
     parser.add_argument("-s", "--speaker", action="store", help="model speaker", default="xenia",
@@ -187,6 +191,7 @@ if __name__ == "__main__":
                         choices=["cpu", "cuda", "xpu", "opengl", "opencl", "ideep", "vulkan", "hpu"])
     parser.add_argument("-r", "--rate", action="store", help="sample rate", default="48000")
     parser.add_argument("-m", "--merge", action="store_true", help="merge wav files and save as opus")
+    parser.add_argument("-c", "--svc", action="store_true", help="experimental, use voice conversion (so-vits-svc)")
     args = parser.parse_args()
     cfg = vars(args)
     root = os.getcwd()
@@ -200,6 +205,7 @@ if __name__ == "__main__":
     torch.set_num_threads(int(cfg["threads"]))
     sample_rate = int(cfg["rate"])
     merge = cfg["merge"]
+    use_svc = cfg["svc"]
 
     local_file = "v3_1_ru.pt" # ru_v3.pt, v3_1_ru.pt
     speaker = cfg["speaker"]
