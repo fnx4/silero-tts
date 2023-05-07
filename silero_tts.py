@@ -48,7 +48,7 @@ def experimental_svc(input_wav_blob): # UNSTABLE
     checkpoint_name = "G_10000.pth"
 
     threshold = "-25" if speaker == "xenia" else "-20"
-    svc_device = "cuda" if device == "cuda" else "cpu"
+    svc_device = "cuda" if cfg["device"] == "cuda" else "cpu"
 
     os.makedirs(in_path,  exist_ok=True)
     os.makedirs(out_path, exist_ok=True)
@@ -93,9 +93,12 @@ def enc_merge(merge_object):
 
 def enc_merge_exec(merge_objects):
     print()
-    print("Merging and encoding, please wait... (" + cfg["threads"] + " threads)")
+    merge_threads = int(cfg["threads"])
+    if use_svc:
+        merge_threads = 1 if merge_threads < 2 else merge_threads // 2
+    print("Merging and encoding, please wait... (" + str(merge_threads) + " threads)")
     pbar = tqdm.tqdm(total=len(merge_objects), desc="MERGING", unit="chapter")
-    with concurrent.futures.ThreadPoolExecutor(max_workers=int(cfg["threads"])) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=merge_threads) as executor:
         futures = [executor.submit(enc_merge, merge_object) for merge_object in merge_objects]
         for future in concurrent.futures.as_completed(futures):
             pbar.update(1)
