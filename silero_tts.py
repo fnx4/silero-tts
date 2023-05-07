@@ -40,7 +40,7 @@ def open_file(source, out_folder):
 def experimental_svc(input_wav_blob): # UNSTABLE
 
     svc_path = os.path.join(os.path.abspath(os.getcwd()), "so-vits-svc-fork")
-    svcg_path = os.path.join(svc_path, "venv", "scripts", "")
+    svcg_path = os.path.join(svc_path, "venv", "Scripts", "")
     in_path = os.path.join(svc_path, "tmp", "in")
     out_path = os.path.join(svc_path, "tmp", "out")
 
