@@ -112,7 +112,7 @@ def open_fb2(source):
     chapters = []
     chapter_text = source
     for line in md.splitlines():
-        if line == "::: section":
+        if line.startswith("::: ") and "section" in line:
             chapters.append(chapter_text)
             chapter_text = ""
         else:
