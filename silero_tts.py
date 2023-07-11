@@ -11,14 +11,14 @@ import torch # cuda: 1.13.1+cu117
 import nltk
 import transliterate
 import num2words
-import pydub
 import tqdm
 import pypandoc
+import ffmpeg # ffmpeg-python
 
 
 ###################################################
 # repo: https://github.com/snakers4/silero-models #
-# commit a7e61e1c6d69e981d2b8da39194ed7512ad4c3c2 #
+# commit 21ed251aa28d023db96a8fdaaf5b22877bc8c0af #
 ###################################################
 
 wrn = []
@@ -37,7 +37,7 @@ def open_file(source, out_folder):
     tts(lines, out_folder)
 
 
-def experimental_svc(input_wav_blob): # UNSTABLE
+def experimental_svc(stream, export_folder): # UNSTABLE
 
     svc_path = os.path.join(os.path.abspath(os.getcwd()), "so-vits-svc-fork")
     svcg_path = os.path.join(svc_path, "venv", "Scripts", "")
@@ -55,7 +55,9 @@ def experimental_svc(input_wav_blob): # UNSTABLE
 
     file_name = str(uuid.uuid4()) + ".wav"
     in_file_path = os.path.join(in_path, file_name)
-    input_wav_blob.export(in_file_path, format="wav")
+
+    stream = ffmpeg.output(stream, in_file_path, c="copy", rf64="auto", loglevel="error") # pcm_s16le/768/48k/RF64
+    ffmpeg.run(stream, overwrite_output=True)
 
     svcg_params = " infer " \
                   "-o " + os.path.join(out_path, file_name) + " " \
@@ -70,38 +72,52 @@ def experimental_svc(input_wav_blob): # UNSTABLE
 
     subprocess.run(svcg_path + "svc " + svcg_params, stdout=subprocess.PIPE, shell=True)
 
-    audio = pydub.AudioSegment.from_wav(os.path.join(out_path, file_name))
+    opus_stream = ffmpeg.input(os.path.join(out_path, file_name))
+    opus_stream = ffmpeg.output(opus_stream, os.path.join(export_folder, "compressed_output.opus"), acodec="libopus", audio_bitrate="32k", loglevel="error")
+    ffmpeg.run(opus_stream, overwrite_output=True)
+
     os.remove(os.path.join(in_path,  file_name))
     os.remove(os.path.join(out_path, file_name))
-    return audio
 
 
 def enc_merge(merge_object):
-    silence_wav = pydub.AudioSegment.silent(150)
     for path, dirs, files in os.walk(merge_object["out_folder"]):
-        combined_wav = pydub.AudioSegment.silent(0)
+        opus_file_path = os.path.join(path, "compressed_output.opus")
+
+        concat_file = open(os.path.join(path, "concat.txt"), "w+", encoding="utf-8")
         for file in sorted(files):
-            if str(file).lower().endswith(".wav"):
-                combined_wav = combined_wav + pydub.AudioSegment.from_wav(os.path.join(merge_object["out_folder"], file)) + silence_wav
+            if str(file).endswith(".wav"):
+                # segments.append(ffmpeg.input(os.path.join(path, file))) # ERR 206
+                concat_file.write("file " + file + "\n")
+        concat_file.close()
+        # stream = ffmpeg.concat(*segments, v=0, a=1)
+        stream = ffmpeg.input(os.path.join(path, "concat.txt"), f="concat", safe=0)
+
         if use_svc:
-            combined_wav = experimental_svc(combined_wav)
-        combined_wav_file = os.path.join(merge_object["out_folder"], "compressed_output.opus")
-        #if not os.path.exists(combined_wav_file):
-        combined_wav.export(combined_wav_file, bitrate="32k", format="opus", codec="libopus")
-        os.replace(os.path.join(merge_object["out_folder"], "compressed_output.opus"), os.path.join(root_out_folder, merge_object["out_file"] + ".opus"))
+            experimental_svc(stream, path)
+        else:
+            stream = ffmpeg.output(stream, opus_file_path, acodec="libopus", audio_bitrate="32k", loglevel="error")
+            ffmpeg.run(stream, overwrite_output=True)
+        os.replace(opus_file_path, os.path.join(root_out_folder, merge_object["out_file"] + ".opus"))
 
 
 def enc_merge_exec(merge_objects):
     print()
     merge_threads = int(cfg["threads"])
     if use_svc:
-        merge_threads = 1 if merge_threads < 2 else merge_threads // 2
+        merge_threads = 1 if merge_threads < 4 else merge_threads // 4
     print("Merging and encoding, please wait... (" + str(merge_threads) + " threads)")
     pbar = tqdm.tqdm(total=len(merge_objects), desc="MERGING", unit="chapter")
     with concurrent.futures.ThreadPoolExecutor(max_workers=merge_threads) as executor:
         futures = [executor.submit(enc_merge, merge_object) for merge_object in merge_objects]
         for future in concurrent.futures.as_completed(futures):
-            pbar.update(1)
+            try:
+                future.result()
+                pbar.update(1)
+            except Exception as e:
+                print("\n" + str(e))
+                pbar.close()
+                exit(1)
 
 
 def open_fb2(source):
@@ -159,7 +175,7 @@ def tts(lines, out_folder):
         t_sentences = nltk.sent_tokenize(text)
         sentences = []
         for sentence in t_sentences:
-            sentences += re.findall('.{1,850}', sentence)
+            sentences += re.findall('.{1,800}', sentence)
         # print(sentences)
         for sentence_num, sentence in enumerate(sentences):
             file_name = os.path.join(out_folder,  "tts_" + str(line_num).zfill(6) + "_" + str(sentence_num).zfill(3) + ".wav")
@@ -168,9 +184,9 @@ def tts(lines, out_folder):
             if text.strip() != "" and not os.path.exists(file_name):
                 if (re.search('[A-Za-z0-9А-Яа-яЁё]', sentence)) is not None:
                     sentence = transliterate.translit(sentence, language_code="ru") # TODO langs
-                    # ssml_text = "<speak><s>" + sentence + "</s><break time='150ms'/></speak>" # sounds ugly
+                    ssml_text = "<speak><s>" + sentence + "</s><break time='150ms'/></speak>"
                     try:
-                        model.save_wav(text=sentence, speaker=speaker, sample_rate=sample_rate, audio_path=file_name)
+                        model.save_wav(ssml_text=ssml_text, speaker=speaker, sample_rate=sample_rate, audio_path=file_name)
                     except Exception as e:
                         if str(e) == "Model couldn't generate your text, probably it's too long":
                             print("Broken tokenization EX!")
@@ -193,8 +209,8 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--device", action="store", help="torch.device value", default="cpu",
                         choices=["cpu", "cuda", "xpu", "opengl", "opencl", "ideep", "vulkan", "hpu"])
     parser.add_argument("-r", "--rate", action="store", help="sample rate", default="48000")
-    parser.add_argument("-m", "--merge", action="store_true", help="merge wav files and save as opus")
-    parser.add_argument("-c", "--svc", action="store_true", help="experimental, use voice conversion (so-vits-svc)")
+    parser.add_argument("-m", "--merge", action="store_true", help="[FFmpeg required] merge wav files and save as opus")
+    parser.add_argument("-c", "--svc", action="store_true", help="[FFmpeg required] experimental, use voice conversion (so-vits-svc)")
     args = parser.parse_args()
     cfg = vars(args)
     root = os.getcwd()
@@ -256,8 +272,9 @@ if __name__ == "__main__":
         print("Error: input file or folder not found")
         exit(1)
 
-    print("\nWarnings: ")
-    print(wrn)
+    if len(wrn) > 0:
+        print("\nWarnings: ")
+        print(wrn)
     print("\nFinished!")
     exit(0)
 

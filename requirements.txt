@@ -1,0 +1,4 @@
+transliterate
+num2words
+pypandoc
+ffmpeg-python

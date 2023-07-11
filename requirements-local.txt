@@ -1,0 +1,5 @@
+-f https://download.pytorch.org/whl/cu117/torch_stable.html
+torchaudio==0.13.1+cu117
+torch==1.13.1+cu117
+nltk
+numpy
