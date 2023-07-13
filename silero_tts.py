@@ -89,6 +89,7 @@ def enc_merge(merge_object):
             if str(file).endswith(".wav"):
                 # segments.append(ffmpeg.input(os.path.join(path, file))) # ERR 206
                 concat_file.write("file " + file + "\n")
+                concat_file.write("file " + os.path.join(root, "silence150.wav").replace("\\", "/") + "\n")
         concat_file.close()
         # stream = ffmpeg.concat(*segments, v=0, a=1)
         stream = ffmpeg.input(os.path.join(path, "concat.txt"), f="concat", safe=0)
@@ -104,6 +105,12 @@ def enc_merge(merge_object):
 def enc_merge_exec(merge_objects):
     print()
     merge_threads = int(cfg["threads"])
+
+    if not os.path.exists("silence150.wav"):
+        silence_stream = ffmpeg.input("anullsrc=r=" + cfg["rate"] + ":cl=mono", t="0.15", f="lavfi")
+        silence_stream = ffmpeg.output(silence_stream, "silence150.wav", loglevel="error")
+        ffmpeg.run(silence_stream, overwrite_output=True)
+
     if use_svc:
         merge_threads = 1 if merge_threads < 4 else merge_threads // 4
     print("Merging and encoding, please wait... (" + str(merge_threads) + " threads)")
@@ -184,9 +191,9 @@ def tts(lines, out_folder):
             if text.strip() != "" and not os.path.exists(file_name):
                 if (re.search('[A-Za-z0-9А-Яа-яЁё]', sentence)) is not None:
                     sentence = transliterate.translit(sentence, language_code="ru") # TODO langs
-                    ssml_text = "<speak><s>" + sentence + "</s><break time='150ms'/></speak>"
+                    # ssml_text = "<speak><s>" + sentence + "</s><break time='150ms'/></speak>"
                     try:
-                        model.save_wav(ssml_text=ssml_text, speaker=speaker, sample_rate=sample_rate, audio_path=file_name)
+                        model.save_wav(text=sentence, speaker=speaker, sample_rate=sample_rate, audio_path=file_name)
                     except Exception as e:
                         if str(e) == "Model couldn't generate your text, probably it's too long":
                             print("Broken tokenization EX!")
