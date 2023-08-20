@@ -18,7 +18,7 @@ import ffmpeg # ffmpeg-python
 
 ###################################################
 # repo: https://github.com/snakers4/silero-models #
-# commit 21ed251aa28d023db96a8fdaaf5b22877bc8c0af #
+# commit ce0756babc77ff3e4cd9aab1b871699e362325fc #
 ###################################################
 
 wrn = []
@@ -55,12 +55,18 @@ def experimental_svc(stream, export_folder): # UNSTABLE
 
     file_name = str(uuid.uuid4()) + ".wav"
     in_file_path = os.path.join(in_path, file_name)
+    out_file_path = os.path.join(out_path, file_name)
 
     stream = ffmpeg.output(stream, in_file_path, c="copy", rf64="auto", loglevel="error") # pcm_s16le/768/48k/RF64
     ffmpeg.run(stream, overwrite_output=True)
 
+    if os.path.getsize(in_file_path) > (4 * 1024 * 1024 * 1024): # >4GB
+        # out_file_path = out_file_path.replace(".wav", ".flac")
+        print("File is too large: " + in_file_path)
+        exit(1)
+
     svcg_params = " infer " \
-                  "-o " + os.path.join(out_path, file_name) + " " \
+                  "-o " + out_file_path + " " \
                   "-s " + model_name + " " \
                   "-m " + os.path.join(svc_path, "models", model_name, checkpoint_name) + " " \
                   "-c " + os.path.join(svc_path, "models", model_name, "config.json") + " " \
@@ -68,16 +74,16 @@ def experimental_svc(stream, export_folder): # UNSTABLE
                   "-db " + threshold + " " \
                   "--no-auto-predict-f0 " \
                   "-d " + svc_device + " " \
-                  "" + os.path.join(in_path, file_name)
+                  "" + in_file_path
 
     subprocess.run(svcg_path + "svc " + svcg_params, stdout=subprocess.PIPE, shell=True)
 
-    opus_stream = ffmpeg.input(os.path.join(out_path, file_name))
+    opus_stream = ffmpeg.input(out_file_path)
     opus_stream = ffmpeg.output(opus_stream, os.path.join(export_folder, "compressed_output.opus"), acodec="libopus", audio_bitrate="32k", loglevel="error")
     ffmpeg.run(opus_stream, overwrite_output=True)
 
-    os.remove(os.path.join(in_path,  file_name))
-    os.remove(os.path.join(out_path, file_name))
+    os.remove(in_file_path)
+    os.remove(out_file_path)
 
 
 def enc_merge(merge_object):
@@ -233,6 +239,7 @@ if __name__ == "__main__":
     merge = cfg["merge"]
     use_svc = cfg["svc"]
 
+    # v4 (v4_ru.pt) is trash: robotic voice, poor gpu(cuda) performance on 2.0.1+cu118, not working at all on 1.13.1
     local_file = "v3_1_ru.pt" # ru_v3.pt, v3_1_ru.pt
     speaker = cfg["speaker"]
     if not os.path.isfile(local_file):
