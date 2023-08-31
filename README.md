@@ -5,7 +5,7 @@
 
 ```
 usage: silero_tts.py [-h] -i INPUT [-o OUTPUT] [-t THREADS] [-s {aidar,baya,kseniya,xenia,eugene}]
-                     [-d {cpu,cuda,xpu,opengl,opencl,ideep,vulkan,hpu}] [-r RATE] [-m] [-c]
+                     [-d {cpu,cuda,xpu,opengl,opencl,ideep,vulkan,hpu}] [-r RATE] [-m] [-c] [-C]
 
 tts
 
@@ -24,6 +24,7 @@ optional arguments:
   -r RATE, --rate RATE  sample rate (default: 48000)
   -m, --merge           [FFmpeg required] merge wav files and save as opus (default: False)
   -c, --svc             [FFmpeg required] experimental, use voice conversion (so-vits-svc) (default: False)
+  -C, --rvc             [FFmpeg required] experimental, use voice conversion (Retrieval-based-Voice-Conversion) (default: False)
 
 Example: ./silero_tts.py -i folder/or/file.txt -o path/to/result -t 16 -s xenia -d cuda -r 48000 --merge
 ```

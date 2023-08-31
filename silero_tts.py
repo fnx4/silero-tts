@@ -86,6 +86,50 @@ def experimental_svc(stream, export_folder): # UNSTABLE
     os.remove(out_file_path)
 
 
+def experimental_rvc(stream, export_folder): # TODO similar to svc
+    rvc_path = os.path.join(os.path.abspath(os.getcwd()), "rvc")
+    in_path = os.path.join(rvc_path, "tmp", "in")
+    out_path = os.path.join(rvc_path, "tmp", "out")
+
+    model_name = "ru-saya"
+    model_pth = "ru-saya-1000.pth"
+    model_index = "trained_IVF3468_Flat_nprobe_1_ru-saya_v2.index"
+
+    transpose = "3"
+
+    os.makedirs(in_path,  exist_ok=True)
+    os.makedirs(out_path, exist_ok=True)
+
+    file_name = str(uuid.uuid4()) + ".wav"
+    in_file_path = os.path.join(in_path, file_name)
+    out_file_path = os.path.join(out_path, file_name)
+
+    stream = ffmpeg.output(stream, in_file_path, c="copy", rf64="auto", loglevel="error") # pcm_s16le/768/48k/RF64
+    ffmpeg.run(stream, overwrite_output=True)
+
+    if os.path.getsize(in_file_path) > (4 * 1024 * 1024 * 1024): # >4GB
+        print("File is too large: " + in_file_path)
+        exit(1)
+
+    rvc_params = "" + transpose + " " \
+                 "\"" + in_file_path + "\" " \
+                 "\"" + out_file_path + "\" " \
+                 "\"" + os.path.join(rvc_path, "models", model_name, model_pth) + "\" " \
+                 "\"" + os.path.join(rvc_path, "models", model_name, model_index) + "\" " \
+                 "" + "\"cuda:0\" " \
+                 "" + "\"rmvpe\" "
+    proc = os.path.join(rvc_path, "venv", "Scripts", "python") + " " + os.path.join(rvc_path, "infer_cli.py") + " " + rvc_params
+    # print(proc)
+    subprocess.run(proc, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
+
+    opus_stream = ffmpeg.input(out_file_path)
+    opus_stream = ffmpeg.output(opus_stream, os.path.join(export_folder, "compressed_output.opus"), acodec="libopus", audio_bitrate="32k", loglevel="error")
+    ffmpeg.run(opus_stream, overwrite_output=True)
+
+    os.remove(in_file_path)
+    os.remove(out_file_path)
+
+
 def enc_merge(merge_object):
     for path, dirs, files in os.walk(merge_object["out_folder"]):
         opus_file_path = os.path.join(path, "compressed_output.opus")
@@ -102,6 +146,8 @@ def enc_merge(merge_object):
 
         if use_svc:
             experimental_svc(stream, path)
+        if use_rvc:
+            experimental_rvc(stream, path)
         else:
             stream = ffmpeg.output(stream, opus_file_path, acodec="libopus", audio_bitrate="32k", loglevel="error")
             ffmpeg.run(stream, overwrite_output=True)
@@ -119,6 +165,8 @@ def enc_merge_exec(merge_objects):
 
     if use_svc:
         merge_threads = 1 if merge_threads < 4 else merge_threads // 4
+    if use_rvc:
+        merge_threads = 1
     print("Merging and encoding, please wait... (" + str(merge_threads) + " threads)")
     pbar = tqdm.tqdm(total=len(merge_objects), desc="MERGING", unit="chapter")
     with concurrent.futures.ThreadPoolExecutor(max_workers=merge_threads) as executor:
@@ -224,6 +272,7 @@ if __name__ == "__main__":
     parser.add_argument("-r", "--rate", action="store", help="sample rate", default="48000")
     parser.add_argument("-m", "--merge", action="store_true", help="[FFmpeg required] merge wav files and save as opus")
     parser.add_argument("-c", "--svc", action="store_true", help="[FFmpeg required] experimental, use voice conversion (so-vits-svc)")
+    parser.add_argument("-C", "--rvc", action="store_true", help="[FFmpeg required] experimental, use voice conversion (Retrieval-based-Voice-Conversion)")
     args = parser.parse_args()
     cfg = vars(args)
     root = os.getcwd()
@@ -238,6 +287,7 @@ if __name__ == "__main__":
     sample_rate = int(cfg["rate"])
     merge = cfg["merge"]
     use_svc = cfg["svc"]
+    use_rvc = cfg["rvc"]
 
     # v4 (v4_ru.pt) is trash: robotic voice, poor gpu(cuda) performance on 2.0.1+cu118, not working at all on 1.13.1
     local_file = "v3_1_ru.pt" # ru_v3.pt, v3_1_ru.pt
