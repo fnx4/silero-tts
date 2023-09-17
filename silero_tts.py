@@ -149,7 +149,7 @@ def enc_merge(merge_object):
 
         if use_svc:
             experimental_svc(stream, path)
-        if use_rvc:
+        elif use_rvc:
             experimental_rvc(stream, path)
         else:
             stream = ffmpeg.output(stream, opus_file_path, acodec="libopus", audio_bitrate="32k", loglevel="error")
