@@ -118,8 +118,10 @@ def experimental_rvc(stream, export_folder): # TODO similar to svc
                  "\"" + os.path.join(rvc_path, "models", model_name, model_index) + "\" " \
                  "" + "\"cuda:0\" " \
                  "" + "\"rmvpe\" "
-    vc_python_bin = os.path.join(rvc_path, "venv", "Scripts", "python")
-    if not os.path.exists(vc_python_bin): # i.e. colab
+    vc_python_bin = os.path.join(rvc_path, "venv", "Scripts")
+    if os.path.exists(vc_python_bin.strip()): # e.g. not *nix/colab
+        vc_python_bin = os.path.join(vc_python_bin, "python")
+    else:
         vc_python_bin = "python"
     proc = vc_python_bin + " " + os.path.join(rvc_path, "infer_cli.py") + " " + rvc_params
     # print(proc)
