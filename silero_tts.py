@@ -21,6 +21,11 @@ import ffmpeg # ffmpeg-python
 # commit ce0756babc77ff3e4cd9aab1b871699e362325fc #
 ###################################################
 
+REGEXP_NAME = "[^A-Za-z0-9А-Яа-яЁё_!#%№-]+"
+REGEXP_TEXT = "[^A-Za-z0-9А-Яа-яЁё_\s .,;!№$&?–—-]+"
+
+RVC_VRAM_LIMIT = 16 # for fb2 and epub only
+
 wrn = []
 parser = argparse.ArgumentParser(description="tts", formatter_class=argparse.ArgumentDefaultsHelpFormatter,
                                  epilog="Example: ./silero_tts.py -i folder/or/file.txt -o path/to/result -t 16 -s xenia -d cuda -r 48000 --merge")
@@ -87,6 +92,10 @@ def experimental_svc(stream, export_folder): # UNSTABLE
 
 
 def experimental_rvc(stream, export_folder): # TODO similar to svc
+    if cfg["device"] != "cuda":
+        print("ERROR, device " + cfg["device"] + " is not supported")
+        exit(1)
+
     rvc_path = os.path.join(os.path.abspath(os.getcwd()), "rvc")
     in_path = os.path.join(rvc_path, "tmp", "in")
     out_path = os.path.join(rvc_path, "tmp", "out")
@@ -107,9 +116,11 @@ def experimental_rvc(stream, export_folder): # TODO similar to svc
     stream = ffmpeg.output(stream, in_file_path, c="copy", rf64="auto", loglevel="error") # pcm_s16le/768/48k/RF64
     ffmpeg.run(stream, overwrite_output=True)
 
-    if os.path.getsize(in_file_path) > (4 * 1024 * 1024 * 1024): # >4GB
-        print("File is too large: " + in_file_path)
-        exit(1)
+    if os.path.getsize(in_file_path) > (RVC_VRAM_LIMIT * 10 * 1024 * 1024): # ~3KB of text (~10MB of wav) for each GB of VRAM
+        wrn_text = "WARNING: File is too large, high VRAM usage: " + in_file_path
+        wrn.append(wrn_text)
+        print(wrn_text)
+        # exit(1)
 
     rvc_params = "" + transpose + " " \
                  "\"" + in_file_path + "\" " \
@@ -170,9 +181,11 @@ def enc_merge_exec(merge_objects):
 
     if use_svc:
         merge_threads = 1 if merge_threads < 4 else merge_threads // 4
+        print("SVC: number of threads limited to " + str(merge_threads))
     if use_rvc:
         merge_threads = 1
-    print("Merging and encoding, please wait... (" + str(merge_threads) + " threads)")
+        print("RVC: number of threads limited to " + str(merge_threads))
+    print("Merging and encoding, please wait... [" + str(merge_threads) + " thread(s)]")
     pbar = tqdm.tqdm(total=len(merge_objects), desc="MERGING", unit="chapter")
     with concurrent.futures.ThreadPoolExecutor(max_workers=merge_threads) as executor:
         futures = [executor.submit(enc_merge, merge_object) for merge_object in merge_objects]
@@ -186,9 +199,15 @@ def enc_merge_exec(merge_objects):
                 exit(1)
 
 
-def open_fb2(source):
+def open_ebook(source):
     print("converting file " + source + "...")
-    md = pypandoc.convert_file(source, "md")
+    md = None
+    if source.lower().endswith(".epub"):
+        fb2 = pypandoc.convert_file(source, "fb2")
+        md = pypandoc.convert_text(fb2, "md", format="fb2")
+    else:
+        md = pypandoc.convert_file(source, "md")
+
 
     print("extracting chapters...")
     chapters = []
@@ -202,6 +221,9 @@ def open_fb2(source):
             chapter_text += line + "\n"
             if line == "":
                 chapter_text += "\r\n"
+            if use_rvc and len(chapter_text.encode("utf-8")) > RVC_VRAM_LIMIT * 3 * 1000:
+                chapters.append(chapter_text)
+                chapter_text = " \r\n"
     chapters.append(chapter_text)
 
     print()
@@ -210,9 +232,10 @@ def open_fb2(source):
         chapter_name = str(chapter).partition("\n")[0]
         chapter_name = pypandoc.convert_text(chapter_name, "plain", format="md")
         chapter_name = chapter_name.replace(" ", "_").replace("\r", "").replace("\n", "")
-        chapter_name = re.sub("[^A-Za-z0-9А-Яа-яЁё_!#%№-]+", "", chapter_name.strip())
+        chapter_name = re.sub(REGEXP_NAME, "", chapter_name.strip())
+        chapter_name = re.findall('.{1,50}', chapter_name)[0] if chapter_name != "" else "_"
 
-        out_file = (str(line_num).zfill(6) + "_" + chapter_name).replace(".fb2", "")
+        out_file = (str(line_num).zfill(6) + "_" + chapter_name).replace(".fb2", "").replace(".epub", "")
         out_folder = os.path.join(root_out_folder, out_file).replace(" ",  "_")
         merge_object = {
             "out_file": out_file,
@@ -221,7 +244,7 @@ def open_fb2(source):
         merge_objects.append(merge_object)
 
         chapter = str(chapter).replace("\n", " ")
-        chapter = re.sub("[^A-Za-z0-9А-Яа-яЁё_\s .,;!№$&?–—-]+", "", chapter.strip())
+        chapter = re.sub(REGEXP_TEXT, "", chapter.strip())
 
         if not os.path.exists(out_folder):
             os.makedirs(out_folder)
@@ -237,7 +260,7 @@ def tts(lines, out_folder):
         text = str(text).replace("…", ",")
         text = str(text).replace("+", " плюс ")
         text = str(text).replace("%", " процент ")
-        text = re.sub("[^A-Za-z0-9А-Яа-яЁё_\s .,;!№$&?–—-]+", "", text.strip())
+        text = re.sub(REGEXP_TEXT, "", text.strip())
         t_sentences = nltk.sent_tokenize(text)
         sentences = []
         for sentence in t_sentences:
@@ -267,7 +290,7 @@ def tts(lines, out_folder):
 
 
 if __name__ == "__main__":
-    parser.add_argument("-i", "--input", action="store", help="input fb2 file or txt file(s) or folder with txt files (chapters)", required=True)
+    parser.add_argument("-i", "--input", action="store", help="input txt/fb2/epub file or folder with txt files (chapters)", required=True)
     parser.add_argument("-o", "--output", action="store", help="relative output folder", default="result")
     parser.add_argument("-t", "--threads", action="store", help="thread count (torch.set_num_threads value)", default="4")
     parser.add_argument("-s", "--speaker", action="store", help="model speaker", default="xenia",
@@ -310,10 +333,14 @@ if __name__ == "__main__":
         merge_objects = []
         for path, dirs, files in os.walk(source):
             for file_name in sorted(files):
+                if str(file_name).lower().endswith(".fb2") or str(file_name).lower().endswith(".epub"):
+                    error_text = "ERROR, unsupported operation: fb2/epub file (" + file_name + ") in directory"
+                    print(error_text)
+                    exit(1)
                 out_file = str(file_name).replace(" ", "_").replace(".txt", "")
-                out_file = re.sub("[^A-Za-z0-9А-Яа-яЁё_!#%№-]+", "", out_file.strip())
+                out_file = re.sub(REGEXP_NAME, "", out_file.strip())
                 out_folder = os.path.join(root_out_folder, out_file)
-                open_file(os.path.join(path, file_name), out_folder)
+                open_file(os.path.join(path, file_name), out_folder) # TODO RVC: split large files
                 merge_object = {
                     "out_file": out_file,
                     "out_folder": out_folder,
@@ -323,8 +350,8 @@ if __name__ == "__main__":
             enc_merge_exec(merge_objects)
 
     elif os.path.isfile(source):
-        if str(source).lower().endswith(".fb2"):
-            open_fb2(source)
+        if str(source).lower().endswith(".fb2") or str(source).lower().endswith(".epub"):
+            open_ebook(source)
         else:
             print(source)
             print(root_out_folder)
