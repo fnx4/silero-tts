@@ -31,10 +31,6 @@ parser = argparse.ArgumentParser(description="tts", formatter_class=argparse.Arg
 
 class Cfg:
     def __init__(self, param=None):
-        # self.input, self.output, self.threads, self.speaker, self.device, self.rate, self.merge, self.rvc = [None] * 8
-        # if p is not None:
-        #     for k, v in p.items():
-        #         setattr(self, k, v)
         self.input = param["input"]
         self.output = param["output"]
         self.threads = param["threads"]
@@ -60,6 +56,7 @@ class MergeParameters:
 
 
 def main(args):
+    print()
     print(args)
     cfg = Cfg(vars(args))
 
@@ -111,13 +108,16 @@ def input_file_handle(cfg: Cfg, model, merge_objects):
 
 
 def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
-    print("converting file " + in_file_path + "...")
+    print()
+    print("file: " + in_file_path + " ...")
 
     md = None
+    is_ebook = True
     if in_file_path.lower().endswith(".txt"):
         file = open(in_file_path, "r", encoding="utf-8")
         md = file.read()
         file.close()
+        is_ebook = False
     elif in_file_path.lower().endswith(".epub"):
         fb2 = pypandoc.convert_file(in_file_path, "fb2")
         md = pypandoc.convert_text(fb2, "md", format="fb2")
@@ -127,7 +127,6 @@ def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
         print("Error: unknown  file  extension")
         exit(1)
 
-    print("extracting chapters...")
     chapters = []
     chapter_text = in_file_path
     for line in md.splitlines():
@@ -144,7 +143,6 @@ def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
                 chapter_text = " \r\n"
     chapters.append(chapter_text)
 
-    print()
     for line_num, chapter in enumerate(chapters):
         chapter_name = str(chapter).partition("\n")[0]
         chapter_name = pypandoc.convert_text(chapter_name, "plain", format="md")
@@ -160,16 +158,21 @@ def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
 
         if not os.path.exists(out_chapter_path):
             os.makedirs(out_chapter_path)
-        print()
-        print(out_chapter_path)
+        if is_ebook:
+            print()
+            print(out_chapter_path)
+            volume_name = os.path.basename(out_file_path)
+        else:
+            volume_name = ""
         tts(cfg, model, chapter.splitlines(), out_chapter_path)
-        merge_objects.append(MergeParameters(volume_name=os.path.basename(out_file_path), out_file_name=out_file_name, out_file_path=out_chapter_path))
+
+        merge_objects.append(MergeParameters(volume_name=volume_name, out_file_name=out_file_name, out_file_path=out_chapter_path))
 
 
 def tts(cfg: Cfg, model, lines, out_file_path):
     # print(lines)
     # print(out_file_path)
-    for line_num, text in enumerate(tqdm.tqdm(lines, desc="    TTS")):
+    for line_num, text in enumerate(tqdm.tqdm(lines, desc=" TTS")):
         text = str(text).replace("…", ",")
         text = str(text).replace("+", " плюс ")
         text = str(text).replace("%", " процент ")
@@ -202,6 +205,7 @@ def tts(cfg: Cfg, model, lines, out_file_path):
 
 
 def encode(cfg: Cfg, merge_objects):
+    print()
     print("Merging and encoding, please wait...")
 
     if not os.path.exists("silence150.wav"):
@@ -267,7 +271,7 @@ def encode(cfg: Cfg, merge_objects):
                 print(wrn_text)
                 # exit(1)
 
-            rvc_out_path = os.path.join(file["root_path"], file["volume"], "_wav_rvc")
+            rvc_out_path = os.path.join(file["root_path"], "_wav_rvc", file["volume"])
             os.makedirs(rvc_out_path, exist_ok=True)
             rvc_out_file_path = os.path.join(rvc_out_path, file["file_base_name"] + ".wav")
             rvc_params = "" + transpose + " " \
@@ -280,7 +284,7 @@ def encode(cfg: Cfg, merge_objects):
             proc = vc_python_bin + " " + os.path.join(rvc_path, "infer_cli.py") + " " + rvc_params
             subprocess.run(proc, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
 
-            opus_out_path = os.path.join(file["root_path"], file["volume"], "_opus")
+            opus_out_path = os.path.join(file["root_path"], "_opus", file["volume"])
             opus_out_file_path = os.path.join(opus_out_path, file["file_base_name"] + ".opus")
             os.makedirs(opus_out_path, exist_ok=True)
 
@@ -289,7 +293,7 @@ def encode(cfg: Cfg, merge_objects):
             ffmpeg.run(stream_opus, overwrite_output=True)
     else:
         for file in tqdm.tqdm(concatenated_wav_files):
-            opus_volume_folder_path = os.path.join(file["root_path"], file["volume"], "_opus")
+            opus_volume_folder_path = os.path.join(file["root_path"], "_opus", file["volume"])
             os.makedirs(opus_volume_folder_path, exist_ok=True)
             opus_out_path = os.path.join(opus_volume_folder_path, file["file_base_name"] + ".opus")
             stream_opus = ffmpeg.input(file["wav_file_path"])
