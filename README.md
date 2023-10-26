@@ -12,7 +12,7 @@ tts
 optional arguments:
   -h, --help            show this help message and exit
   -i INPUT, --input INPUT
-                        input txt/fb2/epub file or folder with txt files (chapters) (default: None)
+                        input txt/fb2/epub file or folder with txt/fb2/epub files (default: None)
   -o OUTPUT, --output OUTPUT
                         relative output folder (default: result)
   -t THREADS, --threads THREADS

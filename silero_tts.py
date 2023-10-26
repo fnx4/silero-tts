@@ -55,6 +55,25 @@ class MergeParameters:
         return "\n\t" + str(self.volume_name) + " -> " + str(self.out_file_name) + ": " + str(self.out_file_path)
 
 
+class ConcatenatedFilesParameters:
+    root_path: None
+    wav_dir_path: None
+    file_base_name: None
+    wav_file_path: None
+    volume: None
+
+    def __init__(self, root_path, wav_dir_path, file_base_name, wav_file_path, volume):
+        self.root_path = root_path
+        self.wav_dir_path = wav_dir_path
+        self.file_base_name = file_base_name
+        self.wav_file_path = wav_file_path
+        self.volume = volume
+
+    def __repr__(self):
+        return "\n\t" + str(self.root_path) + "; " + str(self.wav_dir_path) + "; " + str(self.file_base_name) + \
+               "; " + str(self.wav_file_path) + "; " + str(self.volume)
+
+
 def main(args):
     print()
     print(args)
@@ -79,7 +98,7 @@ def main(args):
         if os.path.isdir(cfg.input):
             input_directory_handle(cfg, model, merge_objects)
         elif os.path.isfile(cfg.input):
-            input_file_handle(cfg, model, merge_objects)
+            read_file(cfg, model, merge_objects, cfg.input, cfg.output)
         if cfg.merge:
             encode(cfg, merge_objects)
     else:
@@ -98,13 +117,6 @@ def input_directory_handle(cfg: Cfg, model, merge_objects):
             out_file_path = os.path.join(cfg.output, out_file_name)
 
             read_file(cfg, model, merge_objects, in_file_path, out_file_path)
-
-
-def input_file_handle(cfg: Cfg, model, merge_objects):
-    out_file_name = "out"
-    out_file_path = os.path.join(cfg.output, out_file_name)
-
-    read_file(cfg, model, merge_objects, cfg.input, out_file_path)
 
 
 def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
@@ -144,13 +156,15 @@ def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
     chapters.append(chapter_text)
 
     for line_num, chapter in enumerate(chapters):
-        chapter_name = str(chapter).partition("\n")[0]
+        chapter_name = str(chapter).partition("\n")[0] if is_ebook else os.path.basename(in_file_path)
         chapter_name = pypandoc.convert_text(chapter_name, "plain", format="md")
         chapter_name = chapter_name.replace(" ", "_").replace("\r", "").replace("\n", "")
         chapter_name = re.sub(REGEXP_NAME, "", chapter_name.strip())
         chapter_name = re.findall('.{1,50}', chapter_name)[0] if chapter_name != "" else "_"
 
-        out_file_name = (str(line_num).zfill(6) + "_" + chapter_name).replace(".fb2", "").replace(".epub", "")
+        line_num_str = str(line_num).zfill(6)
+        out_file_name = (line_num_str + "_" + chapter_name) if is_ebook else (chapter_name + "_" + line_num_str)
+        out_file_name = out_file_name.replace(".fb2", "").replace(".epub", "").replace("txt", "_")
         out_chapter_path = os.path.join(out_file_path, out_file_name).replace(" ", "_")
 
         chapter = str(chapter).replace("\n", " ")
@@ -166,7 +180,11 @@ def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
             volume_name = ""
         tts(cfg, model, chapter.splitlines(), out_chapter_path)
 
-        merge_objects.append(MergeParameters(volume_name=volume_name, out_file_name=out_file_name, out_file_path=out_chapter_path))
+        merge_objects.append(MergeParameters(
+            volume_name=volume_name,
+            out_file_name=out_file_name,
+            out_file_path=out_chapter_path)
+        )
 
 
 def tts(cfg: Cfg, model, lines, out_file_path):
@@ -234,13 +252,13 @@ def encode(cfg: Cfg, merge_objects):
             stream_wav = ffmpeg.output(stream_wav, wav_out_path, c="copy", rf64="auto", loglevel="error")  # pcm_s16le/768/48k/RF64
             ffmpeg.run(stream_wav, overwrite_output=True)
 
-            concatenated_wav_files.append({
-                "root_path": cfg.output,
-                "wav_dir_path": wav_volume_folder_path,
-                "file_base_name": merge_object.out_file_name,
-                "wav_file_path": wav_out_path,
-                "volume": merge_object.volume_name
-            })
+            concatenated_wav_files.append(ConcatenatedFilesParameters(
+                root_path=cfg.output,
+                wav_dir_path=wav_volume_folder_path,
+                file_base_name=merge_object.out_file_name,
+                wav_file_path=wav_out_path,
+                volume=merge_object.volume_name)
+            )
 
     # print(concatenated_wav_files)
     if cfg.rvc:
@@ -265,17 +283,17 @@ def encode(cfg: Cfg, merge_objects):
         transpose = "3"
 
         for file in tqdm.tqdm(concatenated_wav_files):
-            if os.path.getsize(file["wav_file_path"]) > (RVC_VRAM_LIMIT * 10 * 1024 * 1024):  # ~3KB of text (~10MB of wav) for each GB of VRAM
-                wrn_text = "WARNING: File is too large, high VRAM usage: " + file["wav_out_path"]
+            if os.path.getsize(file.wav_file_path) > (RVC_VRAM_LIMIT * 10 * 1024 * 1024):  # ~3KB of text (~10MB of wav) for each GB of VRAM
+                wrn_text = "WARNING: File is too large, high VRAM usage: " + file.wav_out_path
                 wrn.append(wrn_text)
                 print(wrn_text)
                 # exit(1)
 
-            rvc_out_path = os.path.join(file["root_path"], "_wav_rvc", file["volume"])
+            rvc_out_path = os.path.join(file.root_path, "_wav_rvc", file.volume)
             os.makedirs(rvc_out_path, exist_ok=True)
-            rvc_out_file_path = os.path.join(rvc_out_path, file["file_base_name"] + ".wav")
+            rvc_out_file_path = os.path.join(rvc_out_path, file.file_base_name + ".wav")
             rvc_params = "" + transpose + " " \
-                         "\"" + file["wav_file_path"] + "\" " \
+                         "\"" + file.wav_file_path + "\" " \
                          "\"" + rvc_out_file_path + "\" " \
                          "\"" + os.path.join(rvc_path, "models", model_name, model_pth) + "\" " \
                          "\"" + os.path.join(rvc_path, "models", model_name, model_index) + "\" " \
@@ -284,8 +302,8 @@ def encode(cfg: Cfg, merge_objects):
             proc = vc_python_bin + " " + os.path.join(rvc_path, "infer_cli.py") + " " + rvc_params
             subprocess.run(proc, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
 
-            opus_out_path = os.path.join(file["root_path"], "_opus", file["volume"])
-            opus_out_file_path = os.path.join(opus_out_path, file["file_base_name"] + ".opus")
+            opus_out_path = os.path.join(file.root_path, "_opus", file.volume)
+            opus_out_file_path = os.path.join(opus_out_path, file.file_base_name + ".opus")
             os.makedirs(opus_out_path, exist_ok=True)
 
             stream_opus = ffmpeg.input(rvc_out_file_path)
@@ -293,16 +311,16 @@ def encode(cfg: Cfg, merge_objects):
             ffmpeg.run(stream_opus, overwrite_output=True)
     else:
         for file in tqdm.tqdm(concatenated_wav_files):
-            opus_volume_folder_path = os.path.join(file["root_path"], "_opus", file["volume"])
+            opus_volume_folder_path = os.path.join(file.root_path, "_opus", file.volume)
             os.makedirs(opus_volume_folder_path, exist_ok=True)
-            opus_out_path = os.path.join(opus_volume_folder_path, file["file_base_name"] + ".opus")
-            stream_opus = ffmpeg.input(file["wav_file_path"])
+            opus_out_path = os.path.join(opus_volume_folder_path, file.file_base_name + ".opus")
+            stream_opus = ffmpeg.input(file.wav_file_path)
             stream_opus = ffmpeg.output(stream_opus, opus_out_path, acodec="libopus", audio_bitrate="32k", loglevel="error")
             ffmpeg.run(stream_opus, overwrite_output=True)
 
 
 if __name__ == "__main__":
-    parser.add_argument("-i", "--input", action="store", help="input txt/fb2/epub file or folder with txt files (chapters)", required=True)
+    parser.add_argument("-i", "--input", action="store", help="input txt/fb2/epub file or folder with txt/fb2/epub files", required=True)
     parser.add_argument("-o", "--output", action="store", help="relative output folder", default="result")
     parser.add_argument("-t", "--threads", action="store", help="thread count (torch.set_num_threads value)", default="4")
     parser.add_argument("-s", "--speaker", action="store", help="model speaker", default="xenia",
