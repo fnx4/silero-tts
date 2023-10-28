@@ -329,7 +329,7 @@ if __name__ == "__main__":
                         choices=["cpu", "cuda", "xpu", "opengl", "opencl", "ideep", "vulkan", "hpu"])
     parser.add_argument("-r", "--rate", action="store", help="sample rate", default="48000")
     parser.add_argument("--merge", action="store_true", help="[FFmpeg required] merge wav files and save as opus")
-    parser.add_argument("--rvc", action="store_true", help="[FFmpeg required] [cuda only] use voice conversion (Retrieval-based-Voice-Conversion)")
+    parser.add_argument("--rvc", action="store_true", help="[FFmpeg required] [cuda only] use voice conversion (Retrieval-based-Voice-Conversion 0814v2)")
     # TODO RVC vram target/limit
     # TODO print debug logs
 

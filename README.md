@@ -1,5 +1,5 @@
 # Silero TTS
-## ru txt file(s)/fb2 to wav(s)/opus
+## ru txt/fb2/epub file or folder with txt/fb2/epub files to wav(s)/opus
 
 ### Usage:
 
@@ -23,7 +23,8 @@ optional arguments:
                         torch.device value (default: cpu)
   -r RATE, --rate RATE  sample rate (default: 48000)
   --merge               [FFmpeg required] merge wav files and save as opus (default: False)
-  --rvc                 [FFmpeg required] [cuda only] use voice conversion (Retrieval-based-Voice-Conversion) (default: False)
+  --rvc                 [FFmpeg required] [cuda only] use voice conversion (Retrieval-based-Voice-Conversion 0814v2)
+                        (default: False)
 
 Example: ./silero_tts.py -i folder/or/file.txt -o path/to/result -t 16 -s xenia -d cuda -r 48000 --merge
 ```
