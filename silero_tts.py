@@ -302,7 +302,7 @@ def encode(cfg: Cfg, merge_objects):
             proc = vc_python_bin + " " + os.path.join(rvc_path, "tools", "infer_cli.py") + " " + rvc_params
             process = subprocess.run(proc, cwd=rvc_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
 
-            if not os.path.exists(rvc_out_file_path):
+            if not os.path.exists(rvc_out_file_path) or os.path.getsize(rvc_out_file_path) == 0:
                 print()
                 print("RVC output file not found: ")
                 error(process.stdout.decode("utf-8"))
