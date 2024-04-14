@@ -278,7 +278,7 @@ def encode(cfg: Cfg, merge_objects):
 
         model = " --model_name " + cfg.rvc_model_pth # ./<rvc_path>/assets/weights
         if cfg.rvc_model_index is not None:
-            model += " --index_path" + cfg.rvc_model_index
+            model += " --index_path " + cfg.rvc_model_index
 
         for file in tqdm(concatenated_wav_files):
             if os.path.getsize(file.wav_file_path) > (RVC_VRAM_LIMIT * 20 * 1024 * 1024):  # ~6KB of text (~20MB of wav) for each GB of VRAM
