@@ -21,7 +21,7 @@ import ffmpeg # ffmpeg-python
 ###################################################
 
 REGEXP_NAME = "[^A-Za-z0-9А-Яа-яЁё_-]+"
-REGEXP_TEXT = "[^A-Za-z0-9А-Яа-яЁё_\s .,;!№$&?–—-]+"
+REGEXP_TEXT = "[^A-Za-z0-9А-Яа-яЁё_\/\s .,;!№$%&?+–—-]+"
 
 RVC_VRAM_LIMIT = 16
 
@@ -194,7 +194,10 @@ def tts(cfg: Cfg, model, lines, out_file_path):
         text = str(text).replace("…", ",")
         text = str(text).replace("+", " плюс ")
         text = str(text).replace("%", " процент ")
-        text = re.sub(REGEXP_TEXT, "", text.strip())
+        text = str(text).replace("/", " из ")
+        text = re.sub("(?<=\d)[ ,']+(?=\d{3})", "", text.strip())
+        text = re.sub("(?<=\d)\.(?=\d)", " целых запятая ", text)
+        text = re.sub(REGEXP_TEXT, "", text)
         t_sentences = nltk.sent_tokenize(text)
         sentences = []
         for sentence in t_sentences:
