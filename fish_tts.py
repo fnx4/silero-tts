@@ -209,6 +209,8 @@ def tts(cfg: Cfg, lines, out_file_path):
                                  ' --format "wav" ' + \
                                  " --streaming False " + \
                                  " --no-play " + \
+                                 " --use_memory_cache on " + \
+                                 " --chunk_length 800 " + \
                                  f'--text "{sentence}" --seed "{cfg.seed}" --rate "{cfg.rate}" --reference_id "{cfg.reference}"  --output "{file_name}"'
                         proc = vc_python_bin + " " + params
                         process = subprocess.run(proc, cwd=os.getcwd(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
@@ -227,9 +229,9 @@ def encode(cfg: Cfg, merge_objects):
     print()
     print("Merging and encoding, please wait...")
 
-    if not os.path.exists("silence150.wav"):
-        silence_stream = ffmpeg.input("anullsrc=r=" + cfg.rate + ":cl=mono", t="0.15", f="lavfi")
-        silence_stream = ffmpeg.output(silence_stream, "silence150.wav", loglevel="error")
+    if not os.path.exists("silence25.wav"):
+        silence_stream = ffmpeg.input("anullsrc=r=" + cfg.rate + ":cl=mono", t="0.025", f="lavfi")
+        silence_stream = ffmpeg.output(silence_stream, "silence25.wav", loglevel="error")
         ffmpeg.run(silence_stream, overwrite_output=True)
 
     concatenated_wav_files = []
@@ -243,7 +245,7 @@ def encode(cfg: Cfg, merge_objects):
                 if str(file).lower().startswith("tts"):
                     # print(file)
                     concat_file.write("file " + os.path.abspath(os.path.join(root, file)).replace("\\", "/") + "\n")
-                    concat_file.write("file " + os.path.join(os.getcwd(), "silence150.wav").replace("\\", "/") + "\n")
+                    concat_file.write("file " + os.path.join(os.getcwd(), "silence25.wav").replace("\\", "/") + "\n")
             concat_file.close()
 
             wav_volume_folder_path = os.path.join(cfg.output, "_wav", merge_object.volume_name)
