@@ -6,7 +6,6 @@ import argparse
 import subprocess
 from sys import exit
 
-import torch # cuda: 1.13.1+cu117
 import nltk
 import transliterate
 import num2words
@@ -15,34 +14,27 @@ import pypandoc
 import ffmpeg # ffmpeg-python
 
 
-###################################################
-# repo: https://github.com/snakers4/silero-models #
-# commit ce0756babc77ff3e4cd9aab1b871699e362325fc #
-###################################################
+#################################################################
+# fishaudio/fish-speech 1.5                                     #
+# https://gist.github.com/fnx4/41e48ec7b20e490a8b5dc05b61c792c5 #
+#################################################################
 
 REGEXP_NAME = "[^A-Za-z0-9А-Яа-яЁё_-]+"
 REGEXP_TEXT = "[^A-Za-z0-9А-Яа-яЁё_\/\s .,;!№$%&?+–—-]+"
 
-RVC_VRAM_LIMIT = 16
-
 wrn = []
 parser = argparse.ArgumentParser(description="tts", formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-                                 epilog="Example: ./silero_tts.py -i folder/or/file.txt -o path/to/result -t 16 -s xenia -d cuda -r 48000 --merge")
+                                 epilog="Example: ./fish_tts.py -i folder/or/file.txt -o path/to/result -r 48000 --merge")
 
 
 class Cfg:
     def __init__(self, param=None):
         self.input = param["input"]
         self.output = param["output"]
-        self.threads = param["threads"]
-        self.speaker = param["speaker"]
-        self.device = param["device"]
         self.rate = param["rate"]
         self.merge = param["merge"]
-        self.rvc = param["rvc"]
-        self.rvc_model_pth = param["rvc_model_pth"]
-        self.rvc_model_index = param["rvc_model_index"]
-        self.rvc_transpose = param["rvc_transpose"]
+        self.seed = param["seed"]
+        self.reference = param["reference"]
 
 
 class MergeParameters:
@@ -83,26 +75,14 @@ def main(args):
     print(args)
     cfg = Cfg(vars(args))
 
-    nltk.download("punkt")
-
-    torch._C._jit_set_profiling_mode(False)
-
-    device = torch.device(cfg.device)
-    torch.set_num_threads(int(cfg.threads))
-
-    # v4 (v4_ru.pt) is trash: robotic voice, poor gpu(cuda) performance on 2.0.1+cu118, not working at all on 1.13.1
-    local_file = "v3_1_ru.pt" # ru_v3.pt, v3_1_ru.pt
-    if not os.path.isfile(local_file):
-        torch.hub.download_url_to_file("https://models.silero.ai/models/tts/ru/" + local_file, local_file)
-    model = torch.package.PackageImporter(local_file).load_pickle("tts_models", "model")
-    model.to(device)
+    nltk.download("punkt_tab")
 
     merge_objects = []
     if os.path.exists(cfg.input):
         if os.path.isdir(cfg.input):
-            input_directory_handle(cfg, model, merge_objects)
+            input_directory_handle(cfg, merge_objects)
         elif os.path.isfile(cfg.input):
-            read_file(cfg, model, merge_objects, cfg.input, cfg.output)
+            read_file(cfg, merge_objects, cfg.input, cfg.output)
         if cfg.merge:
             encode(cfg, merge_objects)
     else:
@@ -112,7 +92,7 @@ def main(args):
     exit(0)
 
 
-def input_directory_handle(cfg: Cfg, model, merge_objects):
+def input_directory_handle(cfg: Cfg, merge_objects):
     for path, dirs, files in os.walk(cfg.input):
         for file_name in sorted(files):
             out_file_name = re.sub(REGEXP_NAME, "", str(file_name).replace(" ", "_")
@@ -120,10 +100,10 @@ def input_directory_handle(cfg: Cfg, model, merge_objects):
             in_file_path = os.path.join(path, file_name)
             out_file_path = os.path.join(cfg.output, out_file_name)
 
-            read_file(cfg, model, merge_objects, in_file_path, out_file_path)
+            read_file(cfg, merge_objects, in_file_path, out_file_path)
 
 
-def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
+def read_file(cfg: Cfg, merge_objects, in_file_path, out_file_path):
     print()
     print("file: " + in_file_path + " ...")
 
@@ -154,7 +134,7 @@ def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
             chapter_text += line + "\n"
             if line == "":
                 chapter_text += "\r\n"
-            if cfg.rvc and len(chapter_text.encode("utf-8")) > RVC_VRAM_LIMIT * 6 * 1000:
+            if len(chapter_text.encode("utf-8")) > (100 * 1024):
                 chapters.append(chapter_text)
                 chapter_text = " \r\n"
     chapters.append(chapter_text)
@@ -180,7 +160,7 @@ def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
             volume_name = os.path.basename(out_file_path)
         else:
             volume_name = ""
-        tts(cfg, model, chapter.splitlines(), out_chapter_path)
+        tts(cfg, chapter.splitlines(), out_chapter_path)
 
         merge_objects.append(MergeParameters(
             volume_name=volume_name,
@@ -189,7 +169,20 @@ def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
         )
 
 
-def tts(cfg: Cfg, model, lines, out_file_path):
+def get_fish_python_bin():
+    fish_path = os.path.join(os.path.abspath(os.getcwd()), "fish-speech")
+    vc_python_bin_win = os.path.join(fish_path, "venv", "Scripts")
+    vc_python_bin_nix = os.path.join(fish_path, "venv", "bin")
+    if os.path.exists(vc_python_bin_win.strip()):
+        return os.path.join(vc_python_bin_win, "python")
+    elif os.path.exists(vc_python_bin_nix.strip()):
+        return os.path.join(vc_python_bin_nix, "python")
+    else:
+        return "python"
+
+
+def tts(cfg: Cfg, lines, out_file_path):
+    vc_python_bin = get_fish_python_bin()
     for line_num, text in enumerate(tqdm(lines, leave=False, position=1, desc="    TEXT")):
         text = str(text).replace("…", ",")
         text = str(text).replace("+", " плюс ")
@@ -204,23 +197,28 @@ def tts(cfg: Cfg, model, lines, out_file_path):
             sentences += re.findall('.{1,800}', sentence)
         # print(sentences)
         for sentence_num, sentence in enumerate(tqdm(sentences, leave=False, position=2, desc="SENTENCE")):
-            file_name = os.path.join(out_file_path, "tts_" + str(line_num).zfill(6) + "_" + str(sentence_num).zfill(3) + ".wav")
+            file_name = os.path.join(out_file_path, "tts_" + str(line_num).zfill(6) + "_" + str(sentence_num).zfill(3))
             sentence = re.sub(r"(\d+)", lambda x: num2words.num2words(int(x.group(0)), lang="ru"), sentence)
             # print(sentence)
             if text.strip() != "" and not os.path.exists(file_name):
                 if (re.search('[A-Za-z0-9А-Яа-яЁё]', sentence)) is not None:
                     sentence = transliterate.translit(sentence, language_code="ru")
                     try:
-                        model.save_wav(text=sentence, speaker=cfg.speaker, sample_rate=int(cfg.rate), audio_path=file_name)
+                        params = " -m tools.api_client " + \
+                                 " --normalize False " + \
+                                 ' --format "wav" ' + \
+                                 " --streaming False " + \
+                                 " --no-play " + \
+                                 f'--text "{sentence}" --seed "{cfg.seed}" --rate "{cfg.rate}" --reference_id "{cfg.reference}"  --output "{file_name}"'
+                        proc = vc_python_bin + " " + params
+                        process = subprocess.run(proc, cwd=os.getcwd(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
+
+                        if not os.path.exists(file_name + ".wav") or os.path.getsize(file_name + ".wav") == 0:
+                            print()
+                            print("file not found: ")
+                            error(process.stdout.decode("utf-8"))
+                            exit(1)
                     except Exception as e:
-                        if str(e) == "Model couldn't generate your text, probably it's too long":
-                            print("Broken tokenization EX!")
-                            wrn_text = out_file_path + " (" + str(line_num) + ") " + text + " -> " + sentence
-                            print(wrn_text)
-                            wrn.append(wrn_text)
-                            sentence = ''.join(filter(str.isalpha, sentence))
-                            model.save_wav(text=sentence, speaker=cfg.speaker, sample_rate=int(cfg.rate), audio_path=file_name)
-                        else:
                             print(str(e))
                             exit(1)
 
@@ -262,63 +260,6 @@ def encode(cfg: Cfg, merge_objects):
                 wav_file_path=wav_out_path,
                 volume=merge_object.volume_name)
             )
-
-    # print(concatenated_wav_files)
-    if cfg.rvc:
-        if cfg.device != "cuda":
-            error("Error: device " + cfg.device + " is not supported")
-            exit(1)
-
-        rvc_path = os.path.join(os.path.abspath(os.getcwd()), "rvc")
-        vc_python_bin_win = os.path.join(rvc_path, "venv", "Scripts")
-        vc_python_bin_nix = os.path.join(rvc_path, "venv", "bin")
-        if os.path.exists(vc_python_bin_win.strip()):
-            vc_python_bin = os.path.join(vc_python_bin_win, "python")
-        elif os.path.exists(vc_python_bin_nix.strip()):
-            vc_python_bin = os.path.join(vc_python_bin_nix, "python")
-        else:
-            vc_python_bin = "python"
-
-        model = " --model_name " + cfg.rvc_model_pth # ./<rvc_path>/assets/weights
-        if cfg.rvc_model_index is not None:
-            model += " --index_path " + cfg.rvc_model_index
-
-        for file in tqdm(concatenated_wav_files):
-            if os.path.getsize(file.wav_file_path) > (RVC_VRAM_LIMIT * 20 * 1024 * 1024):  # ~6KB of text (~20MB of wav) for each GB of VRAM
-                wrn_text = "WARNING: File is too large, high VRAM usage: " + file.wav_out_path
-                wrn.append(wrn_text)
-                print(wrn_text)
-                # exit(1)
-
-            rvc_out_path = os.path.join(file.root_path, "_wav_rvc", file.volume)
-            os.makedirs(rvc_out_path, exist_ok=True)
-            rvc_out_file_path = os.path.join(rvc_out_path, file.file_base_name + ".wav")
-            rvc_params = model + \
-                         " --f0up_key " + cfg.rvc_transpose + \
-                         " --input_path " + os.path.join(os.getcwd(), file.wav_file_path) + \
-                         " --opt_path " + os.path.join(os.getcwd(), rvc_out_file_path) + \
-                         " --device cuda:0" + \
-                         " --f0method rmvpe" + \
-                         " --filter_radius 0" + \
-                         " --index_rate 0" + \
-                         " --rms_mix_rate 0.4"
-            proc = vc_python_bin + " " + os.path.join(rvc_path, "tools", "infer_cli.py") + " " + rvc_params
-            process = subprocess.run(proc, cwd=rvc_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
-
-            if not os.path.exists(rvc_out_file_path) or os.path.getsize(rvc_out_file_path) == 0:
-                print()
-                print("RVC output file not found: ")
-                error(process.stdout.decode("utf-8"))
-                exit(1)
-
-            opus_out_path = os.path.join(file.root_path, "_opus", file.volume)
-            opus_out_file_path = os.path.join(opus_out_path, file.file_base_name + ".opus")
-            os.makedirs(opus_out_path, exist_ok=True)
-
-            stream_opus = ffmpeg.input(rvc_out_file_path)
-            stream_opus = ffmpeg.output(stream_opus, opus_out_file_path, acodec="libopus", audio_bitrate="32k", loglevel="error")
-            ffmpeg.run(stream_opus, overwrite_output=True)
-    else:
         for file in tqdm(concatenated_wav_files):
             opus_volume_folder_path = os.path.join(file.root_path, "_opus", file.volume)
             os.makedirs(opus_volume_folder_path, exist_ok=True)
@@ -331,22 +272,14 @@ def encode(cfg: Cfg, merge_objects):
 def error(err):
     print("\033[91m" + err + "\033[0m")
 
-
 if __name__ == "__main__":
     parser.add_argument("-i", "--input", action="store", help="input txt/fb2/epub file or folder with txt/fb2/epub files", required=True)
     parser.add_argument("-o", "--output", action="store", help="relative output folder", default="result")
     parser.add_argument("-t", "--threads", action="store", help="thread count (torch.set_num_threads value)", default="4")
-    parser.add_argument("-s", "--speaker", action="store", help="model speaker", default="xenia",
-                        choices=["aidar", "baya", "kseniya", "xenia", "eugene"])
-    parser.add_argument("-d", "--device", action="store", help="torch.device value", default="cpu",
-                        choices=["cpu", "cuda", "xpu", "opengl", "opencl", "ideep", "vulkan", "hpu"])
     parser.add_argument("-r", "--rate", action="store", help="sample rate", default="48000")
     parser.add_argument("--merge", action="store_true", help="[FFmpeg required] merge wav files and save as opus")
-    parser.add_argument("--rvc", action="store_true", help="[FFmpeg required] [cuda only] use voice conversion (Retrieval-based-Voice-Conversion v2.2)")
-    parser.add_argument("--rvc_model_pth", action="store", help="RVC model: .pth file name (required)", default="ru-saya-1000.pth")
-    parser.add_argument("--rvc_model_index", action="store", help="RVC model: .index file name")
-    parser.add_argument("--rvc_transpose", action="store", help="RVC model: f0 transpose", default="3")
-    # TODO RVC vram target/limit
-    # TODO print debug logs
+    parser.add_argument("--seed", action="store", help="fish seed", default="205")
+    parser.add_argument("--reference", action="store", help="fish reference_id", default="4_saya") # ./fish-speech/references/4_saya/[reference.lab, reference.wav]
+    # TODO: gen params
 
     main(parser.parse_args())
