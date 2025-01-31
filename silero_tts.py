@@ -5,6 +5,7 @@ import re
 import argparse
 import subprocess
 from sys import exit
+import concurrent
 
 import torch # cuda: 1.13.1+cu117
 import nltk
@@ -264,6 +265,7 @@ def encode(cfg: Cfg, merge_objects):
             )
 
     # print(concatenated_wav_files)
+    streams = []
     if cfg.rvc:
         if cfg.device != "cuda":
             error("Error: device " + cfg.device + " is not supported")
@@ -283,7 +285,7 @@ def encode(cfg: Cfg, merge_objects):
         if cfg.rvc_model_index is not None:
             model += " --index_path " + cfg.rvc_model_index
 
-        for file in tqdm(concatenated_wav_files):
+        for file in tqdm(concatenated_wav_files, desc=" RVC"):
             if os.path.getsize(file.wav_file_path) > (RVC_VRAM_LIMIT * 20 * 1024 * 1024):  # ~6KB of text (~20MB of wav) for each GB of VRAM
                 wrn_text = "WARNING: File is too large, high VRAM usage: " + file.wav_out_path
                 wrn.append(wrn_text)
@@ -317,7 +319,7 @@ def encode(cfg: Cfg, merge_objects):
 
             stream_opus = ffmpeg.input(rvc_out_file_path)
             stream_opus = ffmpeg.output(stream_opus, opus_out_file_path, acodec="libopus", audio_bitrate="32k", loglevel="error")
-            ffmpeg.run(stream_opus, overwrite_output=True)
+            streams.append(stream_opus)
     else:
         for file in tqdm(concatenated_wav_files):
             opus_volume_folder_path = os.path.join(file.root_path, "_opus", file.volume)
@@ -325,11 +327,27 @@ def encode(cfg: Cfg, merge_objects):
             opus_out_path = os.path.join(opus_volume_folder_path, file.file_base_name + ".opus")
             stream_opus = ffmpeg.input(file.wav_file_path)
             stream_opus = ffmpeg.output(stream_opus, opus_out_path, acodec="libopus", audio_bitrate="32k", loglevel="error")
-            ffmpeg.run(stream_opus, overwrite_output=True)
+            streams.append(stream_opus)
+
+    pbar = tqdm(total=len(streams), desc="OPUS")
+    with concurrent.futures.ProcessPoolExecutor(max_workers=int(cfg.threads)) as executor:
+        futures = [executor.submit(ffmpeg_run, stream) for stream in streams]
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                future.result()
+                pbar.update(1)
+            except Exception as e:
+                error("\n" + str(e))
+                pbar.close()
+                exit(1)
 
 
 def error(err):
     print("\033[91m" + err + "\033[0m")
+
+
+def ffmpeg_run(stream):
+    ffmpeg.run(stream, overwrite_output=True)
 
 
 if __name__ == "__main__":
