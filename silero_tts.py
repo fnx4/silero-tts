@@ -24,7 +24,7 @@ import ffmpeg # ffmpeg-python
 REGEXP_NAME = "[^A-Za-z0-9А-Яа-яЁё_-]+"
 REGEXP_TEXT = "[^A-Za-z0-9А-Яа-яЁё_\/\s .,;!№$%&?+–—-]+"
 
-RVC_VRAM_LIMIT = 16
+RVC_VRAM_LIMIT = 12 # RMVPE: >12gb (~40+ min. chunks) may cause unexpected behavior (RVCv2 large input file bug: incorrect sequence of segments)
 
 wrn = []
 parser = argparse.ArgumentParser(description="tts", formatter_class=argparse.ArgumentDefaultsHelpFormatter,
