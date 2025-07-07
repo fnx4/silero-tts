@@ -216,13 +216,18 @@ def tts(cfg: Cfg, model, lines, out_file_path):
                     except Exception as e:
                         if str(e) == "Model couldn't generate your text, probably it's too long":
                             print("Broken tokenization EX!")
-                            wrn_text = out_file_path + " (" + str(line_num) + ") " + text + " -> " + sentence
+                            wrn_text = 'TTS E1: ' + out_file_path + " (" + str(line_num) + ") " + text + " -> " + sentence
                             print(wrn_text)
                             wrn.append(wrn_text)
                             sentence = ''.join(filter(str.isalpha, sentence))
                             model.save_wav(text=sentence, speaker=cfg.speaker, sample_rate=int(cfg.rate), audio_path=file_name)
+                        elif type(e).__name__ == "ValueError":
+                            print('Unable to process text: ' + sentence)
+                            wrn_text = 'TTS E2: ' + out_file_path + " (" + str(line_num) + ") " + text + " -> " + sentence
+                            print(wrn_text)
+                            wrn.append(wrn_text)
                         else:
-                            print(str(e))
+                            print('Exception  ' + str(e))
                             exit(1)
 
 
