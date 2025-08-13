@@ -1,5 +1,6 @@
--f https://download.pytorch.org/whl/cu117/torch_stable.html
-torchaudio==0.13.1+cu117
-torch==1.13.1+cu117
-nltk==3.8.1
-numpy==1.26.0
+-f https://download.pytorch.org/whl/torchaudio/
+-f https://download.pytorch.org/whl/torch/
+torchaudio==2.8.0+cu129
+torch==2.8.0+cu129
+nltk==3.9.1
+numpy==2.3.2

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3.12
 
 import os
 import re
@@ -7,7 +7,7 @@ import subprocess
 from sys import exit
 import concurrent
 
-import torch # cuda: 1.13.1+cu117
+import torch # cuda: 2.8.0+cu129
 import nltk
 import transliterate
 import num2words
@@ -21,8 +21,8 @@ import ffmpeg # ffmpeg-python
 # commit ce0756babc77ff3e4cd9aab1b871699e362325fc #
 ###################################################
 
-REGEXP_NAME = "[^A-Za-z0-9А-Яа-яЁё_-]+"
-REGEXP_TEXT = "[^A-Za-z0-9А-Яа-яЁё_\/\s .,;!№$%&?+–—-]+"
+REGEXP_NAME = r"[^A-Za-z0-9А-Яа-яЁё_-]+"
+REGEXP_TEXT = r"[^A-Za-z0-9А-Яа-яЁё_/\s .,;!№$%&?+–—-]+"
 
 RVC_VRAM_LIMIT = 12 # RMVPE: >12gb (~40+ min. chunks) may cause unexpected behavior (RVCv2 large input file bug: incorrect sequence of segments)
 
@@ -196,8 +196,8 @@ def tts(cfg: Cfg, model, lines, out_file_path):
         text = str(text).replace("+", " плюс ")
         text = str(text).replace("%", " процент ")
         text = str(text).replace("/", " из ")
-        text = re.sub("(?<=\d)[ ,']+(?=\d{3})", "", text.strip())
-        text = re.sub("(?<=\d)\.(?=\d)", " целых запятая ", text)
+        text = re.sub(r"(?<=\d)[ ,']+(?=\d{3})", "", text.strip())
+        text = re.sub(r"(?<=\d)\.(?=\d)", " целых запятая ", text)
         text = re.sub(REGEXP_TEXT, "", text)
         t_sentences = nltk.sent_tokenize(text)
         sentences = []
