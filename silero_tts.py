@@ -85,6 +85,7 @@ def main(args):
     cfg = Cfg(vars(args))
 
     nltk.download("punkt")
+    nltk.download("punkt_tab")
 
     torch._C._jit_set_profiling_mode(False)
 
