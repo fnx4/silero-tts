@@ -39,6 +39,7 @@ class Cfg:
         self.speaker = param["speaker"]
         self.device = param["device"]
         self.rate = param["rate"]
+        self.ignore_newlines = param["ignore_newlines"]
         self.merge = param["merge"]
         self.rvc = param["rvc"]
         self.rvc_model_pth = param["rvc_model_pth"]
@@ -144,6 +145,10 @@ def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
     else:
         error("Error: unknown file extension")
         exit(1)
+
+    if cfg.ignore_newlines:
+        print("WARNING: removing EOL characters. The text will be split by punctuation marks")
+        md = md.replace("\r\n", " ").replace("\n", " ")
 
     chapters = []
     chapter_text = in_file_path
@@ -365,6 +370,7 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--device", action="store", help="torch.device value", default="cpu",
                         choices=["cpu", "cuda", "xpu", "opengl", "opencl", "ideep", "vulkan", "hpu"])
     parser.add_argument("-r", "--rate", action="store", help="sample rate", default="48000")
+    parser.add_argument("-n", "--ignore_newlines", action="store_true", help="use only for low-quality sources, such as books exported from PDF")
     parser.add_argument("--merge", action="store_true", help="[FFmpeg required] merge wav files and save as opus")
     parser.add_argument("--rvc", action="store_true", help="[FFmpeg required] [cuda only] use voice conversion (Retrieval-based-Voice-Conversion v2.2)")
     parser.add_argument("--rvc_model_pth", action="store", help="RVC model: .pth file name (required)", default="ru-saya-1000.pth")
