@@ -148,23 +148,29 @@ def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
 
     if cfg.ignore_newlines:
         print("WARNING: removing EOL characters. The text will be split by punctuation marks")
-        md = md.replace("\r\n", " ").replace("\n", " ")
+        lines = []
+        for line in md.splitlines():
+            if line.startswith(":::") or line.startswith("#"):
+                lines.append(line)
+            else:
+                if lines and lines[-1].startswith((":::", "#")):
+                    lines.append(line.strip())
+                else:
+                    lines[-1] = lines[-1].rstrip() + " " + line.strip()
+        md = "\n".join(lines)
 
     chapters = []
-    chapter_text = in_file_path
+    current_chapter = [in_file_path]
     for line in md.splitlines():
         if line.startswith("::: ") and "section" in line:
-            chapters.append(chapter_text)
-            chapter_text = ""
+            chapters.append("\n".join(current_chapter))
+            current_chapter = []
         else:
-            # chapter_text += pypandoc.convert_text(line, "plain", format="md") # too slow
-            chapter_text += line + "\n"
-            if line == "":
-                chapter_text += "\r\n"
-            if cfg.rvc and len(chapter_text.encode("utf-8")) > RVC_VRAM_LIMIT * 6 * 1000:
-                chapters.append(chapter_text)
-                chapter_text = " \r\n"
-    chapters.append(chapter_text)
+            current_chapter.append(line)
+            if cfg.rvc and len("\n".join(current_chapter).encode("utf-8")) > RVC_VRAM_LIMIT * 6 * 1000:
+                chapters.append("\n".join(current_chapter))
+                current_chapter = [""]
+    chapters.append("\n".join(current_chapter))
 
     for line_num, chapter in enumerate(tqdm(chapters, position=0, desc=" CHAPTER")):
         chapter_name = str(chapter).partition("\n")[0] if is_ebook else os.path.basename(in_file_path)
@@ -215,25 +221,25 @@ def tts(cfg: Cfg, model, lines, out_file_path):
             sentence = re.sub(r"(\d+)", lambda x: num2words.num2words(int(x.group(0)), lang="ru"), sentence)
             # print(sentence)
             if text.strip() != "" and not os.path.exists(file_name):
-                if (re.search('[A-Za-z0-9А-Яа-яЁё]', sentence)) is not None:
+                if (re.search("[A-Za-z0-9А-Яа-яЁё]", sentence)) is not None:
                     sentence = transliterate.translit(sentence, language_code="ru")
                     try:
                         model.save_wav(text=sentence, speaker=cfg.speaker, sample_rate=int(cfg.rate), audio_path=file_name)
                     except Exception as e:
                         if str(e) == "Model couldn't generate your text, probably it's too long":
                             print("Broken tokenization EX!")
-                            wrn_text = 'TTS E1: ' + out_file_path + " (" + str(line_num) + ") " + text + " -> " + sentence
+                            wrn_text = "TTS E1: " + out_file_path + " (" + str(line_num) + ") " + text + " -> " + sentence
                             print(wrn_text)
                             wrn.append(wrn_text)
-                            sentence = ''.join(filter(str.isalpha, sentence))
+                            sentence = "".join(filter(str.isalpha, sentence))
                             model.save_wav(text=sentence, speaker=cfg.speaker, sample_rate=int(cfg.rate), audio_path=file_name)
                         elif type(e).__name__ == "ValueError":
-                            print('Unable to process text: ' + sentence)
-                            wrn_text = 'TTS E2: ' + out_file_path + " (" + str(line_num) + ") " + text + " -> " + sentence
+                            print("Unable to process text: " + sentence)
+                            wrn_text = "TTS E2: " + out_file_path + " (" + str(line_num) + ") " + text + " -> " + sentence
                             print(wrn_text)
                             wrn.append(wrn_text)
                         else:
-                            print('Exception  ' + str(e))
+                            print("Exception  " + str(e))
                             exit(1)
 
 
