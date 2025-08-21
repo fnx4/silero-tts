@@ -21,6 +21,8 @@ import ffmpeg # ffmpeg-python
 # commit ce0756babc77ff3e4cd9aab1b871699e362325fc #
 ###################################################
 
+SECTION_TEXT = "::: Внимание! Начало нового раздела."
+
 REGEXP_NAME = r"[^A-Za-z0-9А-Яа-яЁё_-]+"
 REGEXP_TEXT = r"[^A-Za-z0-9А-Яа-яЁё_/\s .,;!№$%&?+–—-]+"
 
@@ -150,10 +152,10 @@ def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
         print("WARNING: removing EOL characters. The text will be split by punctuation marks")
         lines = []
         for line in md.splitlines():
-            if line.startswith(":::") or line.startswith("#"):
+            if line.startswith((":::", "#", "-" * 8)):
                 lines.append(line)
             else:
-                if lines and lines[-1].startswith((":::", "#")):
+                if lines and lines[-1].startswith((":::", "#", "-" * 8)):
                     lines.append(line.strip())
                 else:
                     lines[-1] = lines[-1].rstrip() + " " + line.strip()
@@ -165,6 +167,8 @@ def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
         if line.startswith("::: ") and "section" in line:
             chapters.append("\n".join(current_chapter))
             current_chapter = []
+        elif line.strip() in ("---", "***", "___") or bool(re.compile("^-+$").match(line.strip())):
+            current_chapter.append(SECTION_TEXT)
         else:
             current_chapter.append(line)
             if cfg.rvc and len("\n".join(current_chapter).encode("utf-8")) > RVC_VRAM_LIMIT * 6 * 1000:
