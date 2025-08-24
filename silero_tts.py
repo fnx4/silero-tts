@@ -155,10 +155,13 @@ def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
             if line.startswith((":::", "#", "-" * 8)):
                 lines.append(line)
             else:
-                if lines and lines[-1].startswith((":::", "#", "-" * 8)):
-                    lines.append(line.strip())
+                if lines:
+                    if lines[-1].startswith((":::", "#", "-" * 8)):
+                        lines.append(line.strip())
+                    else:
+                        lines[-1] = lines[-1].rstrip() + " " + line.strip()
                 else:
-                    lines[-1] = lines[-1].rstrip() + " " + line.strip()
+                    lines.append(line.strip())
         md = "\n".join(lines)
 
     chapters = []
