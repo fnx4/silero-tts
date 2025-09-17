@@ -170,7 +170,7 @@ def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
         if line.startswith("::: ") and "section" in line:
             chapters.append("\n".join(current_chapter))
             current_chapter = []
-        elif line.strip() in ("---", "***", "___") or bool(re.compile("^-+$").match(line.strip())):
+        elif line.strip() in ("---", "___", "***", r"\*\*\*") or bool(re.compile("^-+$").match(line.strip())):
             current_chapter.append(SECTION_TEXT)
         else:
             current_chapter.append(line)
