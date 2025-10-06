@@ -266,6 +266,7 @@ def encode(cfg: Cfg, merge_objects):
             # print(root)
             concat_file_path = os.path.join(root, "concat.txt")
             concat_file = open(concat_file_path, "w+", encoding="utf-8")
+            concat_file.write("file " + os.path.join(os.getcwd(), "silence150.wav").replace("\\", "/") + "\n")
             for file in sorted(files):
                 if str(file).lower().startswith("tts"):
                     # print(file)
@@ -311,7 +312,7 @@ def encode(cfg: Cfg, merge_objects):
 
         for file in tqdm(concatenated_wav_files, desc=" RVC"):
             if os.path.getsize(file.wav_file_path) > (RVC_VRAM_LIMIT * 20 * 1024 * 1024):  # ~6KB of text (~20MB of wav) for each GB of VRAM
-                wrn_text = "WARNING: File is too large, high VRAM usage: " + file.wav_out_path
+                wrn_text = "WARNING: File is too large, high VRAM usage: " + file.wav_file_path
                 wrn.append(wrn_text)
                 print(wrn_text)
                 # exit(1)
