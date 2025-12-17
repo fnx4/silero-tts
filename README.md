@@ -4,15 +4,18 @@
 ### Usage:
 
 ```
-usage: silero_tts.py [-h] -i INPUT [-o OUTPUT] [-l {DEBUG,INFO,WARNING,ERROR,CRITICAL}] [-t THREADS]
-                     [-s {aidar,baya,kseniya,xenia,eugene}] [-d {cpu,cuda,xpu,opengl,opencl,ideep,vulkan,hpu}]
-                     [-r RATE] [-n] [--merge] [--rvc] [--rvc_model_pth RVC_MODEL_PTH]
-                     [--rvc_model_index RVC_MODEL_INDEX] [--rvc_transpose RVC_TRANSPOSE]
+usage: silero_tts.py [-h] [-m {ru_v3,v3_1_ru,v5_ru,v5_1_ru}] -i INPUT [-o OUTPUT]
+                     [-l {DEBUG,INFO,WARNING,ERROR,CRITICAL}] [-t THREADS] [-s {aidar,baya,kseniya,xenia,eugene}]
+                     [-d {cpu,cuda,xpu,opengl,opencl,ideep,vulkan,hpu}] [-r RATE] [-n] [--merge] [--rvc]
+                     [--rvc_model_pth RVC_MODEL_PTH] [--rvc_model_index RVC_MODEL_INDEX]
+                     [--rvc_transpose RVC_TRANSPOSE]
 
 tts
 
 options:
   -h, --help            show this help message and exit
+  -m {ru_v3,v3_1_ru,v5_ru,v5_1_ru}, --model {ru_v3,v3_1_ru,v5_ru,v5_1_ru}
+                        silero model (default: v3_1_ru)
   -i INPUT, --input INPUT
                         input txt/fb2/epub file or folder with txt/fb2/epub files (default: None)
   -o OUTPUT, --output OUTPUT

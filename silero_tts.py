@@ -4,7 +4,7 @@ import os
 import re
 import argparse
 import subprocess
-from sys import exit
+import sys
 import concurrent
 import warnings
 import logging as log
@@ -21,7 +21,7 @@ import scipy
 
 ###################################################
 # repo: https://github.com/snakers4/silero-models #
-# commit ce0756babc77ff3e4cd9aab1b871699e362325fc #
+# commit 9ab9a7c355fbc395dc7a4dfded50965f5a6e485f #
 ###################################################
 
 SECTION_TEXT = "::: Внимание! Начало нового раздела."
@@ -36,8 +36,24 @@ parser = argparse.ArgumentParser(description="tts", formatter_class=argparse.Arg
                                  epilog="Example: ./silero_tts.py -i folder/or/file.txt -o path/to/result -t 16 -s xenia -d cuda -r 48000 --merge")
 
 
+class DefaultPrintFormatter(log.Formatter):
+    default = "[%(levelname)s] %(message)s"
+    levels = {
+        log.DEBUG: default,
+        log.INFO: "%(message)s",
+        log.WARNING: default,
+        log.ERROR: default,
+        log.CRITICAL: default
+    }
+
+    def format(self, record):
+        formatter = log.Formatter(self.levels.get(record.levelno))
+        return formatter.format(record)
+
+
 class Cfg:
     def __init__(self, param=None):
+        self.model = param["model"]
         self.input = param["input"]
         self.output = param["output"]
         self.log_level = param["log_level"]
@@ -86,10 +102,21 @@ class ConcatenatedFilesParameters:
                "; " + str(self.wav_file_path) + "; " + str(self.volume)
 
 
+def logger_reinit(cfg):
+    logger = log.getLogger()
+    while logger.hasHandlers():
+        logger.removeHandler(logger.handlers[0])
+
+    handler = log.StreamHandler(sys.stdout)
+    handler.setFormatter(DefaultPrintFormatter())
+    log.root.addHandler(handler)
+    log.root.setLevel(log.getLevelName(cfg.log_level))
+
+
 def main(args):
     cfg = Cfg(vars(args))
+    logger_reinit(cfg)
 
-    log.basicConfig(level=log.getLevelName(cfg.log_level), format='[%(levelname)s] %(message)s')
     log.info("")
     log.info(args)
 
@@ -102,13 +129,18 @@ def main(args):
     torch.set_num_threads(int(cfg.threads))
 
     # v4 (v4_ru.pt) is trash: robotic voice, poor gpu(cuda) performance on 2.0.1+cu118, not working at all on 1.13.1
-    local_file = "v5_1_ru.pt" # ru_v3.pt, v3_1_ru.pt, v5_ru.pt, v5_1_ru.pt
+    # v5 (v5_ru.pt, v5_1_ru.pt) is ok: correct stress, sounds better than v4, but sometimes has audible distortion, good synergy with RVC
+    local_file = cfg.model + ".pt "# ru_v3.pt, v3_1_ru.pt, v5_ru.pt, v5_1_ru.pt
     if not os.path.isfile(local_file):
         torch.hub.download_url_to_file("https://models.silero.ai/models/tts/ru/" + local_file, local_file)
     warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')
     warnings.filterwarnings('ignore', category=SyntaxWarning, message="invalid escape sequence")
     model = torch.package.PackageImporter(local_file).load_pickle("tts_models", "model")
+    warnings.resetwarnings()
     model.to(device)
+
+    warnings.filterwarnings('ignore', category=DeprecationWarning)
+    warnings.filterwarnings('ignore', category=ResourceWarning)
 
     merge_objects = []
     if os.path.exists(cfg.input):
@@ -120,13 +152,13 @@ def main(args):
             encode(cfg, merge_objects)
     else:
         log.critical("Error: input file or folder not found")
-        exit(1)
+        sys.exit(1)
     log.info("")
     log.info("Finished!")
     if wrn:
         log.warning("")
         log.warning(wrn)
-    exit(0)
+    sys.exit(0)
 
 
 def input_directory_handle(cfg: Cfg, model, merge_objects):
@@ -142,7 +174,7 @@ def input_directory_handle(cfg: Cfg, model, merge_objects):
 
 def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
     log.info("")
-    log.info("\nfile: " + in_file_path + " ...")
+    log.info("file: " + in_file_path + " ...")
 
     md = None
     is_ebook = True
@@ -158,10 +190,10 @@ def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
         md = pypandoc.convert_file(in_file_path, "md")
     else:
         log.critical("Error: unknown file extension")
-        exit(1)
+        sys.exit(1)
 
     if cfg.ignore_newlines:
-        log.warning("WARNING: removing EOL characters. The text will be split by punctuation marks")
+        log.warning("removing EOL characters. The text will be split by punctuation marks")
         lines = []
         for line in md.splitlines():
             if line.startswith((":::", "#", "-" * 8)):
@@ -261,7 +293,7 @@ def tts(cfg: Cfg, model, lines, out_file_path):
                             wrn.append(wrn_text)
                         else:
                             log.critical("Exception  " + str(e))
-                            exit(1)
+                            sys.exit(1)
 
 
 def encode(cfg: Cfg, merge_objects):
@@ -307,7 +339,7 @@ def encode(cfg: Cfg, merge_objects):
     if cfg.rvc:
         if cfg.device != "cuda":
             log.critical("Error: device " + cfg.device + " is not supported")
-            exit(1)
+            sys.exit(1)
 
         rvc_path = os.path.join(os.path.abspath(os.getcwd()), "rvc")
         vc_python_bin_win = os.path.join(rvc_path, "venv", "Scripts")
@@ -328,7 +360,7 @@ def encode(cfg: Cfg, merge_objects):
                 wrn_text = "WARNING: File is too large, high VRAM usage: " + file.wav_out_path
                 wrn.append(wrn_text)
                 log.warning(wrn_text)
-                # exit(1)
+                # sys.exit(1)
 
             rvc_out_path = os.path.join(file.root_path, "_wav_rvc", file.volume)
             os.makedirs(rvc_out_path, exist_ok=True)
@@ -349,7 +381,7 @@ def encode(cfg: Cfg, merge_objects):
                 log.critical("")
                 log.critical("RVC output file not found: ")
                 log.critical(process.stdout.decode("utf-8"))
-                exit(1)
+                sys.exit(1)
 
             opus_out_path = os.path.join(file.root_path, "_opus", file.volume)
             opus_out_file_path = os.path.join(opus_out_path, file.file_base_name + ".opus")
@@ -378,7 +410,7 @@ def encode(cfg: Cfg, merge_objects):
                 log.critical("")
                 log.critical(str(e))
                 pbar.close()
-                exit(1)
+                sys.exit(1)
 
 
 def ffmpeg_run(stream):
@@ -386,6 +418,8 @@ def ffmpeg_run(stream):
 
 
 if __name__ == "__main__":
+    parser.add_argument("-m", "--model", action="store", help="silero model", default="v3_1_ru",
+                        choices=["ru_v3", "v3_1_ru", "v5_ru", "v5_1_ru"])
     parser.add_argument("-i", "--input", action="store", help="input txt/fb2/epub file or folder with txt/fb2/epub files", required=True)
     parser.add_argument("-o", "--output", action="store", help="relative output folder", default="result")
     parser.add_argument("-l", "--log_level", action="store", help="log level", default="INFO", type=str.upper,
