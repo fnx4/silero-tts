@@ -6,6 +6,8 @@ import argparse
 import subprocess
 from sys import exit
 import concurrent
+import warnings
+import logging as log
 
 import torch # cuda: 2.8.0+cu129
 import nltk
@@ -14,6 +16,7 @@ import num2words
 from tqdm.auto import tqdm
 import pypandoc
 import ffmpeg # ffmpeg-python
+import scipy
 
 
 ###################################################
@@ -37,6 +40,7 @@ class Cfg:
     def __init__(self, param=None):
         self.input = param["input"]
         self.output = param["output"]
+        self.log_level = param["log_level"]
         self.threads = param["threads"]
         self.speaker = param["speaker"]
         self.device = param["device"]
@@ -83,9 +87,11 @@ class ConcatenatedFilesParameters:
 
 
 def main(args):
-    print()
-    print(args)
     cfg = Cfg(vars(args))
+
+    log.basicConfig(level=log.getLevelName(cfg.log_level), format='[%(levelname)s] %(message)s')
+    log.info("")
+    log.info(args)
 
     nltk.download("punkt")
     nltk.download("punkt_tab")
@@ -96,9 +102,11 @@ def main(args):
     torch.set_num_threads(int(cfg.threads))
 
     # v4 (v4_ru.pt) is trash: robotic voice, poor gpu(cuda) performance on 2.0.1+cu118, not working at all on 1.13.1
-    local_file = "v3_1_ru.pt" # ru_v3.pt, v3_1_ru.pt
+    local_file = "v5_1_ru.pt" # ru_v3.pt, v3_1_ru.pt, v5_ru.pt, v5_1_ru.pt
     if not os.path.isfile(local_file):
         torch.hub.download_url_to_file("https://models.silero.ai/models/tts/ru/" + local_file, local_file)
+    warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is deprecated')
+    warnings.filterwarnings('ignore', category=SyntaxWarning, message="invalid escape sequence")
     model = torch.package.PackageImporter(local_file).load_pickle("tts_models", "model")
     model.to(device)
 
@@ -111,9 +119,13 @@ def main(args):
         if cfg.merge:
             encode(cfg, merge_objects)
     else:
-        error("Error: input file or folder not found")
+        log.critical("Error: input file or folder not found")
         exit(1)
-    print("\nFinished!")
+    log.info("")
+    log.info("Finished!")
+    if wrn:
+        log.warning("")
+        log.warning(wrn)
     exit(0)
 
 
@@ -129,8 +141,8 @@ def input_directory_handle(cfg: Cfg, model, merge_objects):
 
 
 def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
-    print()
-    print("file: " + in_file_path + " ...")
+    log.info("")
+    log.info("\nfile: " + in_file_path + " ...")
 
     md = None
     is_ebook = True
@@ -145,11 +157,11 @@ def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
     elif in_file_path.lower().endswith(".fb2"):
         md = pypandoc.convert_file(in_file_path, "md")
     else:
-        error("Error: unknown file extension")
+        log.critical("Error: unknown file extension")
         exit(1)
 
     if cfg.ignore_newlines:
-        print("WARNING: removing EOL characters. The text will be split by punctuation marks")
+        log.warning("WARNING: removing EOL characters. The text will be split by punctuation marks")
         lines = []
         for line in md.splitlines():
             if line.startswith((":::", "#", "-" * 8)):
@@ -222,37 +234,39 @@ def tts(cfg: Cfg, model, lines, out_file_path):
         sentences = []
         for sentence in t_sentences:
             sentences += re.findall('.{1,800}', sentence)
-        # print(sentences)
+        log.debug(sentences)
         for sentence_num, sentence in enumerate(tqdm(sentences, leave=False, position=2, desc="SENTENCE")):
             file_name = os.path.join(out_file_path, "tts_" + str(line_num).zfill(6) + "_" + str(sentence_num).zfill(3) + ".wav")
             sentence = re.sub(r"(\d+)", lambda x: num2words.num2words(int(x.group(0)), lang="ru"), sentence)
-            # print(sentence)
+            log.debug(sentence)
             if text.strip() != "" and not os.path.exists(file_name):
                 if (re.search("[A-Za-z0-9А-Яа-яЁё]", sentence)) is not None:
                     sentence = transliterate.translit(sentence, language_code="ru")
                     try:
-                        model.save_wav(text=sentence, speaker=cfg.speaker, sample_rate=int(cfg.rate), audio_path=file_name)
+                        model.save_wav(text=sentence, speaker=cfg.speaker, sample_rate=int(cfg.rate), audio_path=file_name,
+                                       put_accent=True, put_yo=True)
                     except Exception as e:
                         if str(e) == "Model couldn't generate your text, probably it's too long":
-                            print("Broken tokenization EX!")
+                            log.error("Broken tokenization EX!")
                             wrn_text = "TTS E1: " + out_file_path + " (" + str(line_num) + ") " + text + " -> " + sentence
-                            print(wrn_text)
+                            log.error(wrn_text)
                             wrn.append(wrn_text)
                             sentence = "".join(filter(str.isalpha, sentence))
-                            model.save_wav(text=sentence, speaker=cfg.speaker, sample_rate=int(cfg.rate), audio_path=file_name)
+                            model.save_wav(text=sentence, speaker=cfg.speaker, sample_rate=int(cfg.rate), audio_path=file_name,
+                                           put_accent=True, put_yo=True)
                         elif type(e).__name__ == "ValueError":
-                            print("Unable to process text: " + sentence)
+                            log.error("Unable to process text: " + sentence)
                             wrn_text = "TTS E2: " + out_file_path + " (" + str(line_num) + ") " + text + " -> " + sentence
-                            print(wrn_text)
+                            log.error(wrn_text)
                             wrn.append(wrn_text)
                         else:
-                            print("Exception  " + str(e))
+                            log.critical("Exception  " + str(e))
                             exit(1)
 
 
 def encode(cfg: Cfg, merge_objects):
-    print()
-    print("Merging and encoding, please wait...")
+    log.info("")
+    log.info("Merging and encoding, please wait...")
 
     if not os.path.exists("silence150.wav"):
         silence_stream = ffmpeg.input("anullsrc=r=" + cfg.rate + ":cl=mono", t="0.15", f="lavfi")
@@ -263,13 +277,12 @@ def encode(cfg: Cfg, merge_objects):
 
     for merge_object in merge_objects:
         for root, dirs, files in os.walk(merge_object.out_file_path):
-            # print(root)
+            log.debug(root)
             concat_file_path = os.path.join(root, "concat.txt")
             concat_file = open(concat_file_path, "w+", encoding="utf-8")
-            concat_file.write("file " + os.path.join(os.getcwd(), "silence150.wav").replace("\\", "/") + "\n")
             for file in sorted(files):
                 if str(file).lower().startswith("tts"):
-                    # print(file)
+                    log.debug(file)
                     concat_file.write("file " + os.path.abspath(os.path.join(root, file)).replace("\\", "/") + "\n")
                     concat_file.write("file " + os.path.join(os.getcwd(), "silence150.wav").replace("\\", "/") + "\n")
             concat_file.close()
@@ -289,11 +302,11 @@ def encode(cfg: Cfg, merge_objects):
                 volume=merge_object.volume_name)
             )
 
-    # print(concatenated_wav_files)
+    log.debug(concatenated_wav_files)
     streams = []
     if cfg.rvc:
         if cfg.device != "cuda":
-            error("Error: device " + cfg.device + " is not supported")
+            log.critical("Error: device " + cfg.device + " is not supported")
             exit(1)
 
         rvc_path = os.path.join(os.path.abspath(os.getcwd()), "rvc")
@@ -312,9 +325,9 @@ def encode(cfg: Cfg, merge_objects):
 
         for file in tqdm(concatenated_wav_files, desc=" RVC"):
             if os.path.getsize(file.wav_file_path) > (RVC_VRAM_LIMIT * 20 * 1024 * 1024):  # ~6KB of text (~20MB of wav) for each GB of VRAM
-                wrn_text = "WARNING: File is too large, high VRAM usage: " + file.wav_file_path
+                wrn_text = "WARNING: File is too large, high VRAM usage: " + file.wav_out_path
                 wrn.append(wrn_text)
-                print(wrn_text)
+                log.warning(wrn_text)
                 # exit(1)
 
             rvc_out_path = os.path.join(file.root_path, "_wav_rvc", file.volume)
@@ -333,9 +346,9 @@ def encode(cfg: Cfg, merge_objects):
             process = subprocess.run(proc, cwd=rvc_path, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
 
             if not os.path.exists(rvc_out_file_path) or os.path.getsize(rvc_out_file_path) == 0:
-                print()
-                print("RVC output file not found: ")
-                error(process.stdout.decode("utf-8"))
+                log.critical("")
+                log.critical("RVC output file not found: ")
+                log.critical(process.stdout.decode("utf-8"))
                 exit(1)
 
             opus_out_path = os.path.join(file.root_path, "_opus", file.volume)
@@ -362,13 +375,10 @@ def encode(cfg: Cfg, merge_objects):
                 future.result()
                 pbar.update(1)
             except Exception as e:
-                error("\n" + str(e))
+                log.critical("")
+                log.critical(str(e))
                 pbar.close()
                 exit(1)
-
-
-def error(err):
-    print("\033[91m" + err + "\033[0m")
 
 
 def ffmpeg_run(stream):
@@ -378,6 +388,8 @@ def ffmpeg_run(stream):
 if __name__ == "__main__":
     parser.add_argument("-i", "--input", action="store", help="input txt/fb2/epub file or folder with txt/fb2/epub files", required=True)
     parser.add_argument("-o", "--output", action="store", help="relative output folder", default="result")
+    parser.add_argument("-l", "--log_level", action="store", help="log level", default="INFO", type=str.upper,
+                        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
     parser.add_argument("-t", "--threads", action="store", help="thread count (torch.set_num_threads value)", default="4")
     parser.add_argument("-s", "--speaker", action="store", help="model speaker", default="xenia",
                         choices=["aidar", "baya", "kseniya", "xenia", "eugene"])
@@ -390,7 +402,5 @@ if __name__ == "__main__":
     parser.add_argument("--rvc_model_pth", action="store", help="RVC model: .pth file name (required)", default="ru-saya-1000.pth")
     parser.add_argument("--rvc_model_index", action="store", help="RVC model: .index file name")
     parser.add_argument("--rvc_transpose", action="store", help="RVC model: f0 transpose", default="3")
-    # TODO RVC vram target/limit
-    # TODO print debug logs
 
     main(parser.parse_args())
