@@ -102,7 +102,7 @@ class ConcatenatedFilesParameters:
                "; " + str(self.wav_file_path) + "; " + str(self.volume)
 
 
-def logger_reinit(cfg):
+def logger_reinit(cfg: Cfg) -> None:
     logger = log.getLogger()
     while logger.hasHandlers():
         logger.removeHandler(logger.handlers[0])
@@ -113,7 +113,7 @@ def logger_reinit(cfg):
     log.root.setLevel(log.getLevelName(cfg.log_level))
 
 
-def main(args):
+def main(args) -> None:
     cfg = Cfg(vars(args))
     logger_reinit(cfg)
 
@@ -142,12 +142,12 @@ def main(args):
     warnings.filterwarnings('ignore', category=DeprecationWarning)
     warnings.filterwarnings('ignore', category=ResourceWarning)
 
-    merge_objects = []
+    merge_objects = None
     if os.path.exists(cfg.input):
         if os.path.isdir(cfg.input):
-            input_directory_handle(cfg, model, merge_objects)
+            merge_objects = input_directory_handle(cfg, model)
         elif os.path.isfile(cfg.input):
-            read_file(cfg, model, merge_objects, cfg.input, cfg.output)
+            merge_objects = read_file(cfg, model, cfg.input, cfg.output)
         if cfg.merge:
             encode(cfg, merge_objects)
     else:
@@ -161,7 +161,8 @@ def main(args):
     sys.exit(0)
 
 
-def input_directory_handle(cfg: Cfg, model, merge_objects):
+def input_directory_handle(cfg: Cfg, model) -> list[MergeParameters]:
+    merge_objects = []
     for path, dirs, files in os.walk(cfg.input):
         for file_name in sorted(files):
             out_file_name = re.sub(REGEXP_NAME, "", str(file_name).replace(" ", "_")
@@ -169,10 +170,11 @@ def input_directory_handle(cfg: Cfg, model, merge_objects):
             in_file_path = os.path.join(path, file_name)
             out_file_path = os.path.join(cfg.output, out_file_name)
 
-            read_file(cfg, model, merge_objects, in_file_path, out_file_path)
+            merge_objects = read_file(cfg, model, in_file_path, out_file_path)
+    return merge_objects
 
 
-def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
+def read_file(cfg: Cfg, model, in_file_path: str, out_file_path: str) -> list[MergeParameters]:
     log.info("")
     log.info("file: " + in_file_path + " ...")
 
@@ -223,6 +225,7 @@ def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
                 current_chapter = [""]
     chapters.append("\n".join(current_chapter))
 
+    merge_objects = []
     for line_num, chapter in enumerate(tqdm(chapters, position=0, desc=" CHAPTER")):
         chapter_name = str(chapter).partition("\n")[0] if is_ebook else os.path.basename(in_file_path)
         chapter_name = pypandoc.convert_text(chapter_name, "plain", format="md")
@@ -251,9 +254,10 @@ def read_file(cfg: Cfg, model, merge_objects, in_file_path, out_file_path):
             out_file_name=out_file_name,
             out_file_path=out_chapter_path)
         )
+    return merge_objects
 
 
-def tts(cfg: Cfg, model, lines, out_file_path):
+def tts(cfg: Cfg, model, lines, out_file_path: str):
     for line_num, text in enumerate(tqdm(lines, leave=False, position=1, desc="    TEXT")):
         text = str(text).replace("…", ",")
         text = str(text).replace("+", " плюс ")
@@ -296,7 +300,7 @@ def tts(cfg: Cfg, model, lines, out_file_path):
                             sys.exit(1)
 
 
-def encode(cfg: Cfg, merge_objects):
+def encode(cfg: Cfg, merge_objects: list[MergeParameters]) -> None:
     log.info("")
     log.info("Merging and encoding, please wait...")
 
@@ -312,6 +316,7 @@ def encode(cfg: Cfg, merge_objects):
             log.debug(root)
             concat_file_path = os.path.join(root, "concat.txt")
             concat_file = open(concat_file_path, "w+", encoding="utf-8")
+            concat_file.write("file " + os.path.join(os.getcwd(), "silence150.wav").replace("\\", "/") + "\n")
             for file in sorted(files):
                 if str(file).lower().startswith("tts"):
                     log.debug(file)
@@ -357,7 +362,7 @@ def encode(cfg: Cfg, merge_objects):
 
         for file in tqdm(concatenated_wav_files, desc=" RVC"):
             if os.path.getsize(file.wav_file_path) > (RVC_VRAM_LIMIT * 20 * 1024 * 1024):  # ~6KB of text (~20MB of wav) for each GB of VRAM
-                wrn_text = "WARNING: File is too large, high VRAM usage: " + file.wav_out_path
+                wrn_text = "WARNING: File is too large, high VRAM usage: " + file.wav_file_path
                 wrn.append(wrn_text)
                 log.warning(wrn_text)
                 # sys.exit(1)
@@ -413,7 +418,7 @@ def encode(cfg: Cfg, merge_objects):
                 sys.exit(1)
 
 
-def ffmpeg_run(stream):
+def ffmpeg_run(stream) -> None:
     ffmpeg.run(stream, overwrite_output=True)
 
 
