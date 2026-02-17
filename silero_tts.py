@@ -170,7 +170,8 @@ def input_directory_handle(cfg: Cfg, model) -> list[MergeParameters]:
             in_file_path = os.path.join(path, file_name)
             out_file_path = os.path.join(cfg.output, out_file_name)
 
-            merge_objects = read_file(cfg, model, in_file_path, out_file_path)
+            chapter_merge_objects = read_file(cfg, model, in_file_path, out_file_path)
+            merge_objects.extend(chapter_merge_objects)
     return merge_objects
 
 
@@ -257,7 +258,7 @@ def read_file(cfg: Cfg, model, in_file_path: str, out_file_path: str) -> list[Me
     return merge_objects
 
 
-def tts(cfg: Cfg, model, lines, out_file_path: str):
+def tts(cfg: Cfg, model, lines: list[str], out_file_path: str):
     for line_num, text in enumerate(tqdm(lines, leave=False, position=1, desc="    TEXT")):
         text = str(text).replace("…", ",")
         text = str(text).replace("+", " плюс ")
