@@ -27,7 +27,7 @@ import scipy
 SECTION_TEXT = "::: Внимание! Начало нового раздела."
 
 REGEXP_NAME = r"[^A-Za-z0-9А-Яа-яЁё_-]+"
-REGEXP_TEXT = r"[^A-Za-z0-9А-Яа-яЁё_/\s .,;!№$%&?+–—-]+"
+REGEXP_TEXT = r"[^A-Za-z0-9А-Яа-яЁё_/\s .,:;!№$%&?+–—-]+"
 
 RVC_VRAM_LIMIT = 12 # RMVPE: >12gb (~40+ min. chunks) may cause unexpected behavior (RVCv2 large input file bug: incorrect sequence of segments)
 
@@ -217,7 +217,7 @@ def read_file(cfg: Cfg, model, in_file_path: str, out_file_path: str) -> list[Me
         if line.startswith("::: ") and "section" in line:
             chapters.append("\n".join(current_chapter))
             current_chapter = []
-        elif line.strip() in ("---", "___", "***", r"\*\*\*") or bool(re.compile("^-+$").match(line.strip())):
+        elif line.strip() in ("---", "___", "***", r"\*\*\*", r"\* \* \*") or bool(re.compile("^-+$").match(line.strip())):
             current_chapter.append(SECTION_TEXT)
         else:
             current_chapter.append(line)
@@ -264,6 +264,7 @@ def tts(cfg: Cfg, model, lines: list[str], out_file_path: str):
         text = str(text).replace("+", " плюс ")
         text = str(text).replace("%", " процент ")
         text = str(text).replace("/", " из ")
+        text = str(text).replace(":", " ")
         text = re.sub(r"(?<=\d)[ ,']+(?=\d{3})", "", text.strip())
         text = re.sub(r"(?<=\d)\.(?=\d)", " целых запятая ", text)
         text = re.sub(REGEXP_TEXT, "", text)
